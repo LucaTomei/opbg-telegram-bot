@@ -45,6 +45,8 @@ class SyncResult:
     created: int
     updated: int
     cancelled: int
+    #: Appointments seen for the first time by a background synchronisation.
+    detected: tuple[uuid.UUID, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -91,10 +93,11 @@ class AppointmentService:
 
         created = 0
         updated = 0
+        detected: list[uuid.UUID] = []
         known_patients = await patients.list_for_account(account.id, only_active=False)
         for appointment in (*current, *history):
             patient_id = self._match_patient(appointment, known_patients)
-            _, is_new = await repository.upsert(
+            record, is_new = await repository.upsert(
                 user_id=account.telegram_user_id,
                 account_id=account.id,
                 patient_id=patient_id,
@@ -103,6 +106,8 @@ class AppointmentService:
             )
             created += int(is_new)
             updated += int(not is_new)
+            if is_new:
+                detected.append(record.id)
         vanished = await repository.mark_missing(
             account_id=account.id,
             seen_external_ids=[item.external_id for item in current],
@@ -110,7 +115,12 @@ class AppointmentService:
         )
         account.last_sync_at = moment
         await PortalAccountRepository(session).flush()
-        return SyncResult(created=created, updated=updated, cancelled=len(vanished))
+        return SyncResult(
+            created=created,
+            updated=updated,
+            cancelled=len(vanished),
+            detected=tuple(detected),
+        )
 
     @staticmethod
     def _match_patient(

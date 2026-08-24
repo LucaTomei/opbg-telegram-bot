@@ -24,12 +24,15 @@ else
   exit 2
 fi
 
-mysql --host="${HOST}" --port="${PORT}" --user=root --password="${MYSQL_ROOT_PASSWORD}" \
+# The password travels through MYSQL_PWD instead of the command line.
+export MYSQL_PWD="${MYSQL_ROOT_PASSWORD}"
+
+mysql --host="${HOST}" --port="${PORT}" --user=root \
   --execute="CREATE DATABASE IF NOT EXISTS \`${TARGET}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;"
 
 openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -pass "${PASSPHRASE_SOURCE}" -in "${ARTIFACT}" \
   | gunzip \
-  | mysql --host="${HOST}" --port="${PORT}" --user=root --password="${MYSQL_ROOT_PASSWORD}" "${TARGET}"
+  | mysql --host="${HOST}" --port="${PORT}" --user=root "${TARGET}"
 
 echo "restore completed into database ${TARGET}"
 echo "verify it, then point DATABASE settings to it only after a manual check"

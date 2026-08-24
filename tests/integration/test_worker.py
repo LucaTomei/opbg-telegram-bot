@@ -419,3 +419,39 @@ async def test_delivery_failures_are_retried_with_backoff(
     assert event.attempt_count == 1
     assert event.status is NotificationStatus.PENDING
     assert event.next_attempt_at is not None
+
+
+async def test_newly_detected_appointments_are_notified(
+    clean_session: AsyncSession, container: Container, user: TelegramUser
+) -> None:
+    """An appointment that appears without a booking still reaches the user."""
+    account = await make_account(clean_session, user)
+    await make_patient(clean_session, account)
+    account.last_sync_at = None
+
+    task = AppointmentSyncTask(container.settings, container.appointments, container.notifications)
+    assert await task.run(clean_session) == 1
+
+    events = await NotificationRepository(clean_session).list_for_user(
+        user.id, page=0, page_size=10
+    )
+    assert events.total == 2
+    assert {item.event_type for item in events.items} == {
+        NotificationEventType.APPOINTMENT_DETECTED
+    }
+
+
+async def test_a_second_sync_does_not_notify_again(
+    clean_session: AsyncSession, container: Container, user: TelegramUser
+) -> None:
+    account = await make_account(clean_session, user)
+    await make_patient(clean_session, account)
+    account.last_sync_at = None
+    task = AppointmentSyncTask(container.settings, container.appointments, container.notifications)
+    await task.run(clean_session)
+    account.last_sync_at = None
+    await task.run(clean_session)
+    events = await NotificationRepository(clean_session).list_for_user(
+        user.id, page=0, page_size=10
+    )
+    assert events.total == 2

@@ -25,16 +25,18 @@ from app.bot.presenters.formatting import (
     format_time_windows,
     format_weekdays,
 )
-from app.bot.routers.common import acknowledge, page_size, render, slot_limit
+from app.bot.routers.common import acknowledge, page_size, render, send_new, slot_limit
 from app.composition import Container
 from app.db.models.conversations import BookingDraft
 from app.db.models.users import TelegramUser
 from app.db.repositories.accounts import PatientRepository
 from app.db.repositories.base import utc_now
 from app.db.repositories.conversations import BookingDraftRepository
+from app.db.repositories.watches import WatchRepository
 from app.domain.entities import PortalSlot, SearchSelection, TimeWindow
 from app.domain.enums import (
     WEEKDAY_LABELS_IT,
+    BookingDraftStatus,
     ConfirmationAction,
     DateMode,
     LocationMode,
@@ -51,7 +53,14 @@ from app.domain.filters import (
     weekday_selected,
 )
 from app.logging import get_logger
-from app.services.mapping import apply_selection_to_draft, draft_filter, draft_selection
+from app.services.mapping import (
+    apply_draft_to_watch,
+    apply_selection_to_draft,
+    draft_filter,
+    draft_selection,
+    move_location_up,
+    selected_location_entries,
+)
 from app.services.slot_codec import decode_locations, decode_slots, encode_locations, encode_slots
 
 logger = get_logger(__name__)
@@ -76,6 +85,8 @@ A_SLOT_PICK = "sp"
 A_CONFIRM1 = "c1"
 A_CONFIRM2 = "c2"
 A_TO_WATCH = "tw"
+A_LOC_ORDER = "lo"
+A_SAVE_WATCH = "sw"
 
 MAX_RESULT_CACHE = 40
 
@@ -512,6 +523,12 @@ async def _render_locations(
 ) -> None:
     available = decode_locations(draft.available_locations_json)
     selected = {str(entry.get("id")) for entry in draft.selected_locations_json}
+    # While editing a monitor there is no search step to go back to.
+    locations_back = (
+        callbacks.build(NS, A_FILTERS, draft.id)
+        if draft.origin_watch_id is not None
+        else callbacks.build(NS, A_RESULTS, 0, draft.id)
+    )
     if not available:
         draft.location_mode = LocationMode.ALL_DYNAMIC
         await render(
@@ -519,7 +536,7 @@ async def _render_locations(
             texts.BOOK_NO_LOCATIONS,
             build_actions(
                 [[Entry("➡️ Continua", callbacks.build(NS, A_FILTERS, draft.id))]],
-                back_target=callbacks.build(NS, A_RESULTS, 0, draft.id),
+                back_target=locations_back,
                 show_cancel=True,
             ),
         )
@@ -562,7 +579,7 @@ async def _render_locations(
             page=current,
             pages=pages,
             extra=(draft.id,),
-            back_target=callbacks.build(NS, A_RESULTS, 0, draft.id),
+            back_target=locations_back,
             show_cancel=True,
             header_rows=header,
             footer_rows=footer,
@@ -676,26 +693,40 @@ async def _render_filters(
     user: TelegramUser,
     draft: BookingDraft,
 ) -> None:
-    keyboard = build_actions(
+    """Filter editor, shared by the booking wizard and by monitor editing."""
+    editing = draft.origin_watch_id is not None
+    rows = [
         [
-            [
-                Entry(texts.BTN_FILTER_PERIOD, callbacks.build(FL, "period", draft.id)),
-                Entry(texts.BTN_FILTER_WEEKDAYS, callbacks.build(FL, "wd", draft.id)),
-            ],
-            [
-                Entry(texts.BTN_FILTER_TIMES, callbacks.build(FL, "times", draft.id)),
-                Entry(texts.BTN_FILTER_EXCLUDED, callbacks.build(FL, "exc", draft.id)),
-            ],
-            [
-                Entry(texts.BTN_FILTER_SORT, callbacks.build(FL, "sort", draft.id)),
-                Entry(texts.BTN_FILTER_LEAD, callbacks.build(FL, "lead", draft.id)),
-            ],
-            [Entry(texts.BTN_SHOW_AVAILABILITY, callbacks.build(NS, A_SLOTS, draft.id, 0))],
+            Entry(texts.BTN_FILTER_PERIOD, callbacks.build(FL, "period", draft.id)),
+            Entry(texts.BTN_FILTER_WEEKDAYS, callbacks.build(FL, "wd", draft.id)),
         ],
-        back_target=callbacks.build(NS, A_LOCATIONS, 0, draft.id),
-        show_cancel=True,
+        [
+            Entry(texts.BTN_FILTER_TIMES, callbacks.build(FL, "times", draft.id)),
+            Entry(texts.BTN_FILTER_EXCLUDED, callbacks.build(FL, "exc", draft.id)),
+        ],
+        [
+            Entry(texts.BTN_FILTER_SORT, callbacks.build(FL, "sort", draft.id)),
+            Entry(texts.BTN_FILTER_LEAD, callbacks.build(FL, "lead", draft.id)),
+        ],
+        [
+            Entry(texts.BTN_FILTER_LOCATIONS, callbacks.build(NS, A_LOCATIONS, 0, draft.id)),
+            Entry(texts.BTN_FILTER_LOCATION_ORDER, callbacks.build(NS, A_LOC_ORDER, draft.id)),
+        ],
+    ]
+    if editing:
+        rows.append([Entry(texts.BTN_SAVE_WATCH, callbacks.build(NS, A_SAVE_WATCH, draft.id))])
+    else:
+        rows.append([Entry(texts.BTN_SHOW_AVAILABILITY, callbacks.build(NS, A_SLOTS, draft.id, 0))])
+    back = (
+        callbacks.build(callbacks.WATCH, "open", draft.origin_watch_id)
+        if draft.origin_watch_id is not None
+        else callbacks.build(NS, A_LOCATIONS, 0, draft.id)
     )
-    await render(event, _filters_summary(draft), keyboard)
+    await render(
+        event,
+        _filters_summary(draft),
+        build_actions(rows, back_target=back, show_cancel=True),
+    )
 
 
 @router.callback_query(F.data.startswith(f"{NS}|{A_FILTERS}"))
@@ -1404,3 +1435,80 @@ async def _success_details(
     if record is None:
         return "Prenotazione registrata."
     return format_appointment_card(record)
+
+
+# --- location preference order -----------------------------------------------
+@router.callback_query(F.data.startswith(f"{NS}|{A_LOC_ORDER}"))
+async def order_locations(
+    query: CallbackQuery, session: AsyncSession, container: Container, user: TelegramUser
+) -> None:
+    """Reorder the selected locations without excluding any of them."""
+    await acknowledge(query)
+    data = callbacks.parse(query.data)
+    draft = await _require_draft(session, user, data.uuid_arg(0))
+    target = data.arg(1)
+    if target:
+        draft.selected_locations_json = move_location_up(
+            list(draft.selected_locations_json), target
+        )
+        await _touch(session, container, draft)
+    entries = list(draft.selected_locations_json)
+    if draft.location_mode is LocationMode.ALL_DYNAMIC or not entries:
+        await render(
+            query,
+            texts.FILTER_ORDER_UNAVAILABLE,
+            build_actions([], back_target=callbacks.build(NS, A_FILTERS, draft.id)),
+        )
+        return
+    rows = [
+        [
+            Entry(
+                f"{position + 1}. {entry.get('name', '')}" + ("" if position == 0 else "  ⬆️"),
+                callbacks.build(NS, A_LOC_ORDER, draft.id, str(entry.get("id", ""))),
+            )
+        ]
+        for position, entry in enumerate(entries)
+    ]
+    await render(
+        query,
+        texts.FILTER_ORDER_TITLE,
+        build_actions(rows, back_target=callbacks.build(NS, A_FILTERS, draft.id)),
+    )
+
+
+# --- saving an edited monitor ------------------------------------------------
+@router.callback_query(F.data.startswith(f"{NS}|{A_SAVE_WATCH}"))
+async def save_watch_edits(
+    query: CallbackQuery, session: AsyncSession, container: Container, user: TelegramUser
+) -> None:
+    """Write the edited filters back onto the monitor and close the draft."""
+    await acknowledge(query)
+    data = callbacks.parse(query.data)
+    draft = await _require_draft(session, user, data.uuid_arg(0))
+    if draft.origin_watch_id is None:
+        raise NotFoundError("this draft does not edit a monitor")
+    watch = await container.watches.require_watch(session, user, draft.origin_watch_id)
+    apply_draft_to_watch(draft, watch)
+    watches = WatchRepository(session)
+    if draft.location_mode is LocationMode.ALL_DYNAMIC:
+        await watches.set_locations(watch, [])
+    else:
+        await watches.set_locations(watch, selected_location_entries(draft))
+    watch.missing_location_reported_at = None
+    await watches.flush()
+    await BookingDraftRepository(session).close(draft, BookingDraftStatus.CONFIRMED)
+    await render(query, texts.WATCH_UPDATED)
+    await send_new(
+        query,
+        texts.WATCH_UPDATED_HINT,
+        build_actions(
+            [
+                [
+                    Entry(
+                        "🔍 Apri il monitoraggio",
+                        callbacks.build(callbacks.WATCH, "open", watch.id),
+                    )
+                ]
+            ]
+        ),
+    )

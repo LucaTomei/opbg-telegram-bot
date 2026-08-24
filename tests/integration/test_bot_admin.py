@@ -364,3 +364,69 @@ async def test_every_admin_list_is_paginated(
         assert any("🏠" in label or "Menu" in label for label in bot.last().buttons()), (
             f"section {action} has no navigation"
         )
+
+
+async def test_seen_slots_and_run_logs_are_visible(
+    bot: BotHarness,
+    clean_session: AsyncSession,
+    admin: TelegramUser,
+    member: TelegramUser,
+    linked: tuple[PortalAccount, Patient],
+) -> None:
+    account, patient = linked
+    watch = await make_watch(clean_session, member, account, patient=patient)
+    await clean_session.commit()
+
+    await bot.press(ADMIN_ID, callbacks.build(NS, "w1", watch.id))
+    detail = bot.last()
+    await bot.press(ADMIN_ID, detail.callback_for("Slot visti"))
+    assert "Slot visti" in bot.last().text
+    await bot.press(ADMIN_ID, callbacks.build(NS, "runs", 0, watch.id))
+    assert "Esecuzioni" in bot.last().text
+
+
+async def test_delegated_pdf_is_audited(
+    bot: BotHarness,
+    clean_session: AsyncSession,
+    admin: TelegramUser,
+    member: TelegramUser,
+    linked: tuple[PortalAccount, Patient],
+    database: Database,
+) -> None:
+    account, _patient = linked
+    await bot.container.appointments.sync_account(clean_session, account)
+    appointment = await AppointmentRepository(clean_session).find_by_external_id(
+        account.id, "70001"
+    )
+    assert appointment is not None
+    await clean_session.commit()
+
+    await bot.press(ADMIN_ID, callbacks.build(NS, "dlg", "pdf", appointment.id))
+    await bot.send(ADMIN_ID, "promemoria richiesto dall'utente")
+    confirm = bot.last().callback_for("Conferma")
+    bot.reset()
+    await bot.press(ADMIN_ID, confirm)
+    assert "Link monouso" in bot.last().text
+
+    async with database.read_session() as session:
+        entries = await AuditRepository(session).list_entries(
+            page=0, page_size=10, action=AuditAction.DELEGATED_PDF_DOWNLOAD
+        )
+        assert entries.total == 1
+
+
+async def test_the_invite_command_opens_the_creation_flow(
+    bot: BotHarness, admin: TelegramUser, database: Database
+) -> None:
+    await bot.send(ADMIN_ID, "/invite")
+    assert bot.contains("utilizzi")
+    bot.reset()
+    await bot.send(ADMIN_ID, "1")
+    assert "Codice:" in bot.last().text
+
+
+async def test_a_regular_user_cannot_use_the_invite_command(
+    bot: BotHarness, member: TelegramUser
+) -> None:
+    await bot.send(MEMBER_ID, "/invite")
+    assert bot.contains(texts.ADMIN_ONLY)

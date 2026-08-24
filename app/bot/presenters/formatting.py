@@ -248,3 +248,41 @@ def format_watch_detail(
 
 def bullet_list(items: Sequence[str]) -> str:
     return "\n".join(f"• {item}" for item in items) if items else texts.EMPTY_PAGE
+
+
+def format_watch_summary(
+    watch: BookingWatch,
+    *,
+    account_label: str,
+    patient_label: str,
+    location_summary: str,
+) -> str:
+    """Compact list entry: what is monitored, where, and when it runs next."""
+    status = texts.WATCH_STATUS_LABELS.get(watch.status.value, watch.status.value)
+    mode = texts.WATCH_MODE_LABELS.get(watch.mode.value, watch.mode.value)
+    bell = "notifiche attive" if watch.notifications_enabled else "notifiche disattivate"
+    return "\n".join(
+        [
+            f"<b>{escape(watch.name)}</b> — {status}, {mode}, {bell}",
+            f"{
+                format_search(
+                    search_type=watch.search_type,
+                    service_name=watch.selected_service_name,
+                    doctor_name=watch.selected_doctor_name,
+                    query=watch.query_text,
+                )
+            }",
+            f"Account: {escape(account_label)} · Paziente: {patient_label}",
+            f"Sedi: {escape(location_summary)}",
+            f"Periodo: {
+                format_period(
+                    date_mode=watch.date_mode,
+                    date_from=watch.date_from,
+                    date_to=watch.date_to,
+                    rolling_days=watch.rolling_days,
+                )
+            }",
+            f"Ultima verifica: {format_local_datetime(watch.last_checked_at)}",
+            f"Prossima verifica: {format_local_datetime(watch.next_check_at)}",
+        ]
+    )

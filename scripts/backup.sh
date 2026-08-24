@@ -31,18 +31,37 @@ fi
 mkdir -p "${BACKUP_DIR}"
 umask 077
 
-mysqldump \
+# The password travels through MYSQL_PWD instead of the command line, so it
+# never shows up in the process list.
+export MYSQL_PWD="${MYSQL_ROOT_PASSWORD}"
+
+# The dump is written to a temporary file first: a shell pipeline hides the
+# exit status of its first stage, and an empty archive must never be kept.
+DUMP="$(mktemp)"
+trap 'rm -f "${DUMP}"' EXIT INT TERM
+
+if ! mysqldump \
   --host="${HOST}" \
   --port="${PORT}" \
   --user=root \
-  --password="${MYSQL_ROOT_PASSWORD}" \
   --single-transaction \
   --quick \
   --routines \
   --events \
   --default-character-set=utf8mb4 \
-  "${DATABASE}" \
-  | gzip -9 \
+  "${DATABASE}" > "${DUMP}"; then
+  echo "mysqldump failed" >&2
+  python -m app.cli record-backup --outcome FAILURE --error "mysqldump failed" || true
+  exit 1
+fi
+
+if ! grep -q "CREATE TABLE" "${DUMP}"; then
+  echo "the dump contains no table: refusing to keep an empty backup" >&2
+  python -m app.cli record-backup --outcome FAILURE --error "empty dump" || true
+  exit 1
+fi
+
+gzip -9 < "${DUMP}" \
   | openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -salt -pass "${PASSPHRASE_SOURCE}" \
   > "${ARTIFACT}"
 
@@ -51,4 +70,7 @@ echo "backup written: ${ARTIFACT} (${SIZE} bytes)"
 
 find "${BACKUP_DIR}" -name 'opbg-*.sql.gz.enc' -type f -mtime "+${RETENTION_DAYS}" -delete
 
-python -m app.cli record-backup --outcome SUCCESS --artifact "$(basename "${ARTIFACT}")" --size "${SIZE}" || true
+python -m app.cli record-backup \
+  --outcome SUCCESS \
+  --artifact "$(basename "${ARTIFACT}")" \
+  --size "${SIZE}"

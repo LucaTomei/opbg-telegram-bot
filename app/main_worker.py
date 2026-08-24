@@ -44,7 +44,9 @@ async def run() -> None:
         processor=WatchProcessor(
             container.settings, container.search, container.bookings, container.notifications
         ),
-        appointment_sync=AppointmentSyncTask(container.settings, container.appointments),
+        appointment_sync=AppointmentSyncTask(
+            container.settings, container.appointments, container.notifications
+        ),
         reconciliation=ReconciliationTask(container.settings, container.search),
         cleanup=CleanupTask(container.settings),
         notifications=container.notifications,

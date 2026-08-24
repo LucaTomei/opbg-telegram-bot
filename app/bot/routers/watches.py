@@ -17,12 +17,14 @@ from app.bot.presenters.formatting import (
     format_time_windows,
     format_watch_detail,
     format_watch_row,
+    format_watch_summary,
 )
 from app.bot.routers.common import acknowledge, page_size, render
 from app.composition import Container
 from app.db.models.users import TelegramUser
 from app.db.models.watches import BookingWatch
 from app.db.repositories.conversations import BookingDraftRepository
+from app.db.repositories.watches import WatchRepository
 from app.domain.enums import (
     ConfirmationAction,
     WatchCompletionPolicy,
@@ -32,6 +34,7 @@ from app.domain.enums import (
 from app.domain.errors import NotFoundError, RateLimitedError, ValidationError
 from app.domain.filters import parse_excluded_dates, parse_time_windows
 from app.logging import get_logger
+from app.services.mapping import copy_watch_into_draft
 
 logger = get_logger(__name__)
 router = Router(name="watches")
@@ -53,6 +56,8 @@ A_DUPLICATE = "dup"
 A_RENAME = "ren"
 A_DELETE = "del"
 A_DELETE_OK = "delok"
+A_EDIT = "edit"
+A_INTERVAL_SET = "iset"
 
 INTERVAL_CHOICES: tuple[int, ...] = (120, 300, 600, 1800, 3600, 21600)
 
@@ -328,9 +333,25 @@ async def _render_watches(
         Entry(format_watch_row(watch), callbacks.build(NS, A_OPEN, watch.id))
         for watch in result.items
     ]
+    summaries: list[str] = []
+    for watch in result.items:
+        summary = await container.watches.summarise(session, watch)
+        summaries.append(
+            format_watch_summary(
+                watch,
+                account_label=summary.account_label,
+                patient_label=summary.patient_label,
+                location_summary=summary.location_summary,
+            )
+        )
+    body = (
+        f"{texts.WATCHES_TITLE}\n\n" + "\n\n".join(summaries)
+        if result.total
+        else texts.WATCHES_EMPTY
+    )
     await render(
         event,
-        texts.WATCHES_TITLE if result.total else texts.WATCHES_EMPTY,
+        body,
         build_list(
             entries,
             namespace=NS,
@@ -377,6 +398,10 @@ def _watch_actions(watch: BookingWatch) -> list[list[Entry]]:
     return [
         [Entry("▶️ Esegui ora", callbacks.build(NS, A_RUN, watch.id)), toggle],
         [bell, autobook],
+        [
+            Entry("🛠 Modifica filtri", callbacks.build(NS, A_EDIT, watch.id)),
+            Entry("⏱ Frequenza", callbacks.build(NS, A_INTERVAL_SET, watch.id)),
+        ],
         [
             Entry("📄 Duplica", callbacks.build(NS, A_DUPLICATE, watch.id)),
             Entry("✏️ Rinomina", callbacks.build(NS, A_RENAME, watch.id)),
@@ -640,5 +665,80 @@ async def confirm_delete(
             ],
             back_target=callbacks.build(NS, A_OPEN, watch.id),
             show_cancel=True,
+        ),
+    )
+
+
+@router.callback_query(F.data.startswith(f"{NS}|{A_EDIT}"))
+async def edit_filters(
+    query: CallbackQuery, session: AsyncSession, container: Container, user: TelegramUser
+) -> None:
+    """Open the filter editor on a draft pre-filled from the monitor."""
+    await acknowledge(query)
+    data = callbacks.parse(query.data)
+    watch = await container.watches.require_watch(session, user, data.uuid_arg(0))
+    drafts = BookingDraftRepository(session)
+    await drafts.abandon_open_for_user(user.id)
+    draft = await drafts.create(
+        user_id=user.id, ttl_seconds=container.settings.booking_draft_ttl_seconds
+    )
+    copy_watch_into_draft(watch, draft)
+    locations = await WatchRepository(session).locations_for(watch.id)
+    draft.selected_locations_json = [
+        {"id": item.portal_location_id, "name": item.location_name} for item in locations
+    ]
+    draft.available_locations_json = list(draft.selected_locations_json)
+    await drafts.flush()
+    await render(
+        query,
+        texts.WATCH_EDIT_TITLE,
+        build_actions(
+            [
+                [
+                    Entry(
+                        "🛠 Apri i filtri",
+                        callbacks.build(callbacks.BOOKING, "flt", draft.id),
+                    )
+                ]
+            ],
+            back_target=callbacks.build(NS, A_OPEN, watch.id),
+            show_cancel=True,
+        ),
+    )
+
+
+@router.callback_query(F.data.startswith(f"{NS}|{A_INTERVAL_SET}"))
+async def change_interval(
+    query: CallbackQuery, session: AsyncSession, container: Container, user: TelegramUser
+) -> None:
+    """Change how often the monitor runs, within the configured bounds."""
+    await acknowledge(query)
+    data = callbacks.parse(query.data)
+    watch = await container.watches.require_watch(session, user, data.uuid_arg(0))
+    choice = data.arg(1)
+    if choice.isdigit():
+        await container.watches.set_interval(session, watch, seconds=int(choice))
+        await _render_watch(
+            query, session, container, user, watch.id, notice="Frequenza aggiornata."
+        )
+        return
+    minimum = container.settings.monitor_min_interval_seconds
+    rows = [
+        [
+            Entry(
+                ("✅ " if watch.interval_seconds == seconds else "")
+                + (f"{seconds // 60} min" if seconds >= 60 else f"{seconds} s"),
+                callbacks.build(NS, A_INTERVAL_SET, watch.id, seconds),
+            )
+            for seconds in group
+            if seconds >= minimum
+        ]
+        for group in (INTERVAL_CHOICES[:2], INTERVAL_CHOICES[2:4], INTERVAL_CHOICES[4:])
+    ]
+    await render(
+        query,
+        texts.WATCH_ASK_INTERVAL.format(minimum=minimum),
+        build_actions(
+            [row for row in rows if row], back_target=callbacks.build(NS, A_OPEN, watch.id)
         ),
     )

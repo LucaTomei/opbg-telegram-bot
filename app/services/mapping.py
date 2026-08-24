@@ -147,3 +147,63 @@ DEFAULTS = {
     "location_mode": LocationMode.ALL_DYNAMIC,
     "sort_strategy": SortStrategy.EARLIEST,
 }
+
+
+def copy_watch_into_draft(watch: BookingWatch, draft: BookingDraft) -> None:
+    """Pre-fill an editing draft with the current configuration of a monitor."""
+    draft.portal_account_id = watch.portal_account_id
+    draft.patient_id = watch.patient_id
+    draft.search_type = watch.search_type
+    draft.query_text = watch.query_text
+    draft.selected_service_external_id = watch.selected_service_external_id
+    draft.selected_service_name = watch.selected_service_name
+    draft.selected_specification_id = watch.selected_specification_id
+    draft.selected_doctor_external_id = watch.selected_doctor_external_id
+    draft.selected_doctor_name = watch.selected_doctor_name
+    draft.location_mode = watch.location_mode
+    draft.date_mode = watch.date_mode
+    draft.date_from = watch.date_from
+    draft.date_to = watch.date_to
+    draft.rolling_days = watch.rolling_days
+    draft.min_lead_hours = watch.min_lead_hours
+    draft.weekdays_mask = watch.weekdays_mask
+    draft.time_windows_json = list(watch.time_windows_json)
+    draft.excluded_dates_json = list(watch.excluded_dates_json)
+    draft.sort_strategy = watch.sort_strategy
+    draft.origin_watch_id = watch.id
+
+
+def apply_draft_to_watch(draft: BookingDraft, watch: BookingWatch) -> None:
+    """Write the edited filters back onto the monitor."""
+    watch.location_mode = draft.location_mode
+    watch.date_mode = draft.date_mode
+    watch.date_from = draft.date_from
+    watch.date_to = draft.date_to
+    watch.rolling_days = draft.rolling_days
+    watch.min_lead_hours = draft.min_lead_hours
+    watch.weekdays_mask = draft.weekdays_mask
+    watch.time_windows_json = list(draft.time_windows_json)
+    watch.excluded_dates_json = list(draft.excluded_dates_json)
+    watch.sort_strategy = draft.sort_strategy
+
+
+def selected_location_entries(draft: BookingDraft) -> list[tuple[str, str, int]]:
+    """Return the selected locations as ``(id, name, preference order)`` tuples."""
+    return [
+        (str(entry.get("id", "")), str(entry.get("name", entry.get("id", ""))), index)
+        for index, entry in enumerate(draft.selected_locations_json)
+        if entry.get("id")
+    ]
+
+
+def move_location_up(entries: list[dict[str, str]], location_id: str) -> list[dict[str, str]]:
+    """Move one location one position earlier in the preference order."""
+    index = next(
+        (position for position, entry in enumerate(entries) if entry.get("id") == location_id),
+        None,
+    )
+    if index is None or index == 0:
+        return entries
+    reordered = list(entries)
+    reordered[index - 1], reordered[index] = reordered[index], reordered[index - 1]
+    return reordered

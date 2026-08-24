@@ -433,3 +433,18 @@ ADMIN_DELEGATED_WARNING: Final[str] = (
 
 EMPTY_PAGE: Final[str] = "Nessun elemento da mostrare."
 PAGE_INDICATOR: Final[str] = "Pagina {page}/{pages}"
+
+BTN_FILTER_LOCATIONS: Final[str] = "🏥 Sedi"
+BTN_FILTER_LOCATION_ORDER: Final[str] = "🔢 Ordine preferenza"
+BTN_SAVE_WATCH: Final[str] = "💾 Salva modifiche"
+FILTER_ORDER_TITLE: Final[str] = (
+    "<b>Ordine di preferenza delle sedi</b>\n"
+    "Tocca una sede per spostarla più in alto. Le sedi successive restano "
+    "comunque incluse: l'ordine conta solo se l'ordinamento è «Sede preferita»."
+)
+FILTER_ORDER_UNAVAILABLE: Final[str] = (
+    "L'ordine di preferenza è disponibile solo quando selezioni sedi specifiche."
+)
+WATCH_UPDATED: Final[str] = "Monitoraggio aggiornato."
+WATCH_UPDATED_HINT: Final[str] = "I nuovi filtri saranno applicati dal prossimo controllo."
+WATCH_EDIT_TITLE: Final[str] = "<b>Modifica monitoraggio</b>\nAggiorna i filtri e salva."

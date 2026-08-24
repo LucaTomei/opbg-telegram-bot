@@ -606,3 +606,100 @@ async def test_settings_can_be_exported(bot: BotHarness, member: TelegramUser) -
     export = bot.last()
     assert "timezone" in export.text
     assert "password" not in export.text.lower()
+
+
+# --- monitor editing ---------------------------------------------------------
+async def test_a_monitor_can_be_edited_and_saved(
+    bot: BotHarness,
+    clean_session: AsyncSession,
+    linked: tuple[PortalAccount, Patient],
+    member: TelegramUser,
+    database: Database,
+) -> None:
+    account, patient = linked
+    watch = await make_watch(clean_session, member, account, patient=patient)
+    await clean_session.commit()
+
+    await bot.press(USER_ID, callbacks.build(callbacks.WATCH, "open", watch.id))
+    await bot.press(USER_ID, bot.last().callback_for("Modifica filtri"))
+    await bot.press(USER_ID, bot.last().callback_for("Apri i filtri"))
+    filters = bot.find("Imposta i filtri")
+
+    await bot.press(USER_ID, filters.callback_for(texts.BTN_FILTER_WEEKDAYS))
+    await bot.press(USER_ID, bot.last().callback_for("Domenica"))
+    await bot.press(USER_ID, bot.last().callback_for(texts.BTN_BACK))
+    save = bot.find("Imposta i filtri").callback_for(texts.BTN_SAVE_WATCH)
+    bot.reset()
+    await bot.press(USER_ID, save)
+    assert bot.contains("Monitoraggio aggiornato")
+
+    async with database.read_session() as session:
+        reloaded = await WatchRepository(session).get_any(watch.id)
+        assert reloaded is not None
+        assert reloaded.weekdays_mask != 0b1111111
+
+
+async def test_the_monitor_frequency_can_be_changed(
+    bot: BotHarness,
+    clean_session: AsyncSession,
+    linked: tuple[PortalAccount, Patient],
+    member: TelegramUser,
+    database: Database,
+) -> None:
+    account, patient = linked
+    watch = await make_watch(clean_session, member, account, patient=patient)
+    await clean_session.commit()
+
+    await bot.press(USER_ID, callbacks.build(callbacks.WATCH, "iset", watch.id))
+    await bot.press(USER_ID, bot.last().callback_for("10 min"))
+    async with database.read_session() as session:
+        reloaded = await WatchRepository(session).get_any(watch.id)
+        assert reloaded is not None
+        assert reloaded.interval_seconds == 600
+
+
+async def test_the_monitor_list_shows_the_next_check(
+    bot: BotHarness,
+    clean_session: AsyncSession,
+    linked: tuple[PortalAccount, Patient],
+    member: TelegramUser,
+) -> None:
+    account, patient = linked
+    await make_watch(clean_session, member, account, patient=patient)
+    await clean_session.commit()
+    await bot.send(USER_ID, texts.BTN_WATCHES)
+    listing = bot.last()
+    assert "Prossima verifica" in listing.text
+    assert "Ultima verifica" in listing.text
+
+
+async def test_location_preference_order_can_be_changed(
+    bot: BotHarness,
+    linked: tuple[PortalAccount, Patient],
+    member: TelegramUser,
+    database: Database,
+) -> None:
+    account, patient = linked
+    service_button = await start_booking(bot, account, patient)
+    await bot.press(USER_ID, service_button)
+    await bot.send(USER_ID, "visita")
+    await bot.press(USER_ID, bot.find("Risultati per").callback_for("VISITA SINTETICA"))
+    locations = bot.find("Seleziona una o più sedi")
+    await bot.press(USER_ID, locations.callback_for("Sede Alfa"))
+    await bot.press(USER_ID, bot.last().callback_for("Sede Beta"))
+    await bot.press(USER_ID, bot.last().callback_for("Continua"))
+    filters = bot.find("Imposta i filtri")
+    await bot.press(USER_ID, filters.callback_for(texts.BTN_FILTER_LOCATION_ORDER))
+    order_screen = bot.last()
+    assert "1. Sede Alfa" in " ".join(order_screen.buttons())
+
+    await bot.press(USER_ID, order_screen.callback_for("2. Sede Beta"))
+    assert "1. Sede Beta" in " ".join(bot.last().buttons())
+
+    async with database.read_session() as session:
+        draft = await BookingDraftRepository(session).latest_open(member.id)
+        assert draft is not None
+        assert [entry["name"] for entry in draft.selected_locations_json] == [
+            "Sede Beta",
+            "Sede Alfa",
+        ]

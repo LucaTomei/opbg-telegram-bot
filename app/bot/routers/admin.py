@@ -12,6 +12,7 @@ import uuid
 from typing import Any
 
 from aiogram import F, Router
+from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
@@ -76,6 +77,8 @@ A_ACC_STATUS = "as"
 A_WATCH_ACTION = "wa"
 A_DELEGATED = "dlg"
 A_CONFIRM = "cf"
+A_SEEN_SLOTS = "seen"
+A_RUN_LOGS = "runs"
 
 
 class AdminStates(StatesGroup):
@@ -538,7 +541,63 @@ async def _execute_admin_action(
         return await _delegated_book(
             session, container, admin, uuid.UUID(hex=payload["target_id"]), reason, correlation_id
         )
+    if action == "delegated_pdf":
+        return await _delegated_pdf(
+            session, container, admin, uuid.UUID(hex=payload["target_id"]), reason, correlation_id
+        )
     raise ValidationError("unknown administrative action")
+
+
+async def _delegated_pdf(
+    session: AsyncSession,
+    container: Container,
+    admin: TelegramUser,
+    appointment_id: uuid.UUID,
+    reason: str,
+    correlation_id: str,
+) -> str:
+    """Issue a one-time reminder link for another user, with a full audit entry."""
+    from app.db.repositories.users import UserRepository
+    from app.domain.enums import NotificationEventType
+    from app.domain.errors import PdfUnavailable
+
+    appointments = AppointmentRepository(session)
+    appointment = await appointments.get_any(appointment_id)
+    if appointment is None:
+        raise NotFoundError("appointment not found")
+    owner = await UserRepository(session).get(appointment.telegram_user_id)
+    if owner is None:
+        raise NotFoundError("appointment owner not found")
+
+    await container.admin.record_delegated_action(
+        session,
+        admin,
+        action=AuditAction.DELEGATED_PDF_DOWNLOAD,
+        target_type="appointment",
+        target_id=appointment.id.hex,
+        reason=reason,
+        correlation_id=correlation_id,
+    )
+    try:
+        await container.appointments.download_pdf(session, appointment=appointment)
+    except PdfUnavailable:
+        await container.notifications.queue(
+            session,
+            user=owner,
+            event_type=NotificationEventType.PDF_UNAVAILABLE,
+            subject=f"{appointment.id.hex}:pdf",
+            payload={"appointment_id": appointment.id.hex},
+            appointment_id=appointment.id,
+            correlation_id=correlation_id,
+        )
+        return f"{texts.ADMIN_ACTION_DONE}\n{texts.APPOINTMENT_PDF_UNAVAILABLE}"
+    url = await container.appointments.issue_download_link(
+        session, user=owner, appointment=appointment, issued_by_admin_id=admin.id
+    )
+    return (
+        f"{texts.ADMIN_ACTION_DONE}\n"
+        f"Link monouso valido {container.settings.pdf_link_ttl_minutes} minuti:\n{url}"
+    )
 
 
 async def _delegated_cancel(
@@ -570,6 +629,21 @@ async def _delegated_cancel(
     )
     result = await container.appointments.cancel(
         session, user=owner, appointment=appointment, initiated_by_admin_id=admin.id
+    )
+    from app.domain.enums import NotificationEventType
+
+    await container.notifications.queue(
+        session,
+        user=owner,
+        event_type=(
+            NotificationEventType.CANCELLATION_SUCCESS
+            if result.succeeded
+            else NotificationEventType.CANCELLATION_FAILED
+        ),
+        subject=f"{appointment.id.hex}:cancel",
+        payload={"detail": result.detail, "by_admin": True},
+        appointment_id=appointment.id,
+        correlation_id=correlation_id,
     )
     if result.succeeded:
         return f"{texts.ADMIN_ACTION_DONE}\n{texts.APPOINTMENT_CANCELLED}"
@@ -900,6 +974,10 @@ async def open_watch(
             Entry("🔕 Notifiche OFF", callbacks.build(NS, A_WATCH_ACTION, watch.id, "noff")),
         ],
         [
+            Entry("👁 Slot visti", callbacks.build(NS, A_SEEN_SLOTS, 0, watch.id)),
+            Entry("📜 Esecuzioni", callbacks.build(NS, A_RUN_LOGS, 0, watch.id)),
+        ],
+        [
             Entry(
                 "🤝 Prenota per conto dell'utente",
                 callbacks.build(NS, A_DELEGATED, "book", watch.id),
@@ -1000,7 +1078,13 @@ async def open_appointment(
                 "🤝 Disdici per conto dell'utente",
                 callbacks.build(NS, A_DELEGATED, "cancel", appointment.id),
             )
-        ]
+        ],
+        [
+            Entry(
+                "📄 Promemoria per conto dell'utente",
+                callbacks.build(NS, A_DELEGATED, "pdf", appointment.id),
+            )
+        ],
     ]
     await render(
         query,
@@ -1203,3 +1287,76 @@ async def show_system(
         ]
     )
     await render(query, text, build_actions([], back_target=callbacks.build(NS, A_ROOT)))
+
+
+# --- monitor diagnostics -----------------------------------------------------
+@router.callback_query(F.data.startswith(f"{NS}|{A_SEEN_SLOTS}"))
+async def list_seen_slots(
+    query: CallbackQuery, session: AsyncSession, container: Container, user: TelegramUser
+) -> None:
+    """Slots already observed by a monitor, with no personal data."""
+    await acknowledge(query)
+    data = callbacks.parse(query.data)
+    watch_id = data.uuid_arg(1)
+    result = await container.admin.list_seen_slots(
+        session, user, watch_id=watch_id, page=data.int_arg(0), page_size=page_size(user)
+    )
+    lines = [
+        f"• {format_local_datetime(item.slot_starts_at)} · "
+        f"{escape(item.location_name or '-')} · "
+        f"{'disponibile' if item.currently_available else 'non più disponibile'}"
+        for item in result.items
+    ]
+    await render(
+        query,
+        f"<b>Slot visti</b> · totale {result.total}\n\n"
+        + ("\n".join(lines) if lines else texts.EMPTY_PAGE),
+        build_list(
+            [],
+            namespace=NS,
+            page_action=A_SEEN_SLOTS,
+            page=result.page,
+            pages=result.pages,
+            extra=(watch_id,),
+            back_target=callbacks.build(NS, A_WATCH, watch_id),
+        ),
+    )
+
+
+@router.callback_query(F.data.startswith(f"{NS}|{A_RUN_LOGS}"))
+async def list_run_logs(
+    query: CallbackQuery, session: AsyncSession, container: Container, user: TelegramUser
+) -> None:
+    await acknowledge(query)
+    data = callbacks.parse(query.data)
+    watch_id = data.uuid_arg(1)
+    result = await container.admin.list_watch_runs(
+        session, user, watch_id=watch_id, page=data.int_arg(0), page_size=page_size(user)
+    )
+    lines = [
+        f"• {format_local_datetime(item.started_at)} · <code>{escape(item.outcome)}</code> · "
+        f"slot {item.slots_found} (nuovi {item.new_slots}) · "
+        f"<code>{escape(item.error_code or '-')}</code>"
+        for item in result.items
+    ]
+    await render(
+        query,
+        f"<b>Esecuzioni</b> · totale {result.total}\n\n"
+        + ("\n".join(lines) if lines else texts.EMPTY_PAGE),
+        build_list(
+            [],
+            namespace=NS,
+            page_action=A_RUN_LOGS,
+            page=result.page,
+            pages=result.pages,
+            extra=(watch_id,),
+            back_target=callbacks.build(NS, A_WATCH, watch_id),
+        ),
+    )
+
+
+@router.message(Command("invite"))
+async def invite_command(message: Message, state: FSMContext) -> None:
+    """``/invite`` is the shortcut to the invite creation flow."""
+    await state.set_state(AdminStates.waiting_invite_uses)
+    await message.answer(texts.ADMIN_INVITE_ASK_USES)

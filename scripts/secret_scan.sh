@@ -38,7 +38,8 @@ fi
 rm -f /tmp/opbg_taxcodes.txt
 
 # 4. Hardcoded credential-looking assignments.
-if git grep -nEI "(password|passwd|secret|token|api_key)[[:space:]]*=[[:space:]]*[\"'][^\"']{12,}[\"']" \
+# A literal assignment only: values that expand a variable are not secrets.
+if git grep -nEI "(password|passwd|secret|token|api_key)[[:space:]]*=[[:space:]]*[\"'][^\"'\$]{12,}[\"']" \
     -- app alembic scripts docker > /tmp/opbg_secrets.txt 2>/dev/null; then
   if [ -s /tmp/opbg_secrets.txt ]; then
     while IFS= read -r line; do report "possible hardcoded secret: ${line}"; done < /tmp/opbg_secrets.txt
@@ -47,7 +48,9 @@ fi
 rm -f /tmp/opbg_secrets.txt
 
 # 5. Private keys and Telegram bot tokens.
-if git grep -nI -- '-----BEGIN .*PRIVATE KEY-----' > /dev/null 2>&1; then
+# The scanner itself contains the pattern, so it is excluded from its own match.
+if git grep -nI -- '-----BEGIN .*PRIVATE KEY-----' \
+    ':!scripts/secret_scan.sh' > /dev/null 2>&1; then
   report "a private key is committed"
 fi
 if git grep -nEI '\b[0-9]{8,10}:AA[0-9A-Za-z_-]{33}\b' -- "${SCAN_PATHS[@]}" > /dev/null 2>&1; then

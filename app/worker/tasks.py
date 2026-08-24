@@ -570,9 +570,15 @@ class ReconciliationTask:
 class AppointmentSyncTask:
     """Periodically refreshes the appointment cache of every active account."""
 
-    def __init__(self, settings: Settings, appointments: object) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        appointments: object,
+        notifications: NotificationService | None = None,
+    ) -> None:
         self._settings = settings
         self._appointments = appointments
+        self._notifications = notifications
 
     async def run(self, session: AsyncSession, *, limit: int = 5) -> int:
         accounts = PortalAccountRepository(session)
@@ -581,7 +587,9 @@ class AppointmentSyncTask:
         synchronised = 0
         for account in due:
             try:
-                await self._appointments.sync_account(session, account)  # type: ignore[attr-defined]
+                result = await self._appointments.sync_account(  # type: ignore[attr-defined]
+                    session, account
+                )
             except DomainError as exc:
                 await accounts.mark_error(account, error_code=exc.code)
                 logger.warning(
@@ -593,8 +601,40 @@ class AppointmentSyncTask:
                     },
                 )
                 continue
+            await self._notify_detected(session, account, result)
             synchronised += 1
         return synchronised
+
+    async def _notify_detected(
+        self, session: AsyncSession, account: object, result: object
+    ) -> None:
+        """Tell the owner about appointments that appeared without their action."""
+        detected = getattr(result, "detected", ())
+        if not detected or self._notifications is None:
+            return
+        owner_id = getattr(account, "telegram_user_id", None)
+        if owner_id is None:
+            return
+        user = await UserRepository(session).get(owner_id)
+        if user is None:
+            return
+        appointments = AppointmentRepository(session)
+        for appointment_id in detected:
+            record = await appointments.get_any(appointment_id)
+            if record is None:
+                continue
+            await self._notifications.queue(
+                session,
+                user=user,
+                event_type=NotificationEventType.APPOINTMENT_DETECTED,
+                subject=f"{record.id.hex}:detected",
+                payload={
+                    "when": record.scheduled_at_utc.isoformat() if record.scheduled_at_utc else "",
+                    "location": record.location_name or "",
+                },
+                appointment_id=record.id,
+                portal_account_id=record.portal_account_id,
+            )
 
 
 class CleanupTask:
