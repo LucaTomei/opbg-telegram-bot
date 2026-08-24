@@ -180,7 +180,11 @@ class PortalAccountRepository(BaseRepository[PortalAccount]):
                 PortalAccount.deleted_at.is_(None),
                 (PortalAccount.last_sync_at.is_(None)) | (PortalAccount.last_sync_at < older_than),
             )
-            .order_by(PortalAccount.last_sync_at.asc().nulls_first())
+            # MySQL has no NULLS FIRST: never synchronised accounts come first.
+            .order_by(
+                PortalAccount.last_sync_at.is_(None).desc(),
+                PortalAccount.last_sync_at.asc(),
+            )
             .limit(limit)
         )
         result = await self.session.scalars(statement)

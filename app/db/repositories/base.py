@@ -76,6 +76,20 @@ class BaseRepository[ModelT: Base]:
         await self.flush()
         return entity
 
+    async def try_add(self, entity: ModelT) -> bool:
+        """Insert inside a savepoint; return ``False`` on a unique violation.
+
+        A plain rollback would discard every other change made in the same
+        session, so the insert is isolated in a nested transaction.
+        """
+        try:
+            async with self.session.begin_nested():
+                self.session.add(entity)
+                await self.session.flush()
+        except IntegrityError:
+            return False
+        return True
+
     async def flush(self) -> None:
         try:
             await self.session.flush()

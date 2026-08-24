@@ -69,11 +69,13 @@ class CircuitBreakerService:
         if record is not None:
             return record
         record = CircuitBreakerStateRecord(scope=scope, subject_key=subject)
-        session.add(record)
         try:
-            await session.flush()
+            # A savepoint keeps a concurrent insert from discarding the rest of
+            # the transaction.
+            async with session.begin_nested():
+                session.add(record)
+                await session.flush()
         except IntegrityError:
-            await session.rollback()
             existing = await session.scalar(
                 select(CircuitBreakerStateRecord).where(
                     CircuitBreakerStateRecord.scope == scope,

@@ -39,12 +39,12 @@ async def _migrate() -> int:
     settings = get_settings()
     container = build_container(service_name="migrate", settings=settings, configure_logs=False)
     try:
-        async with container.database.session() as session:
-            async with named_lock(
-                session, MIGRATION_LOCK, timeout_seconds=MIGRATION_LOCK_TIMEOUT_SECONDS
-            ):
-                await asyncio.to_thread(command.upgrade, _alembic_config(), "head")
-                revision = await session.scalar(text("SELECT version_num FROM alembic_version"))
+        async with (
+            container.database.session() as session,
+            named_lock(session, MIGRATION_LOCK, timeout_seconds=MIGRATION_LOCK_TIMEOUT_SECONDS),
+        ):
+            await asyncio.to_thread(command.upgrade, _alembic_config(), "head")
+            revision = await session.scalar(text("SELECT version_num FROM alembic_version"))
         logger.info(
             "migrations applied",
             extra={"event_code": "MIGRATIONS_APPLIED", "revision": str(revision)},
@@ -58,11 +58,11 @@ async def _downgrade(target: str) -> int:
     settings = get_settings()
     container = build_container(service_name="migrate", settings=settings, configure_logs=False)
     try:
-        async with container.database.session() as session:
-            async with named_lock(
-                session, MIGRATION_LOCK, timeout_seconds=MIGRATION_LOCK_TIMEOUT_SECONDS
-            ):
-                await asyncio.to_thread(command.downgrade, _alembic_config(), target)
+        async with (
+            container.database.session() as session,
+            named_lock(session, MIGRATION_LOCK, timeout_seconds=MIGRATION_LOCK_TIMEOUT_SECONDS),
+        ):
+            await asyncio.to_thread(command.downgrade, _alembic_config(), target)
     finally:
         await container.dispose()
     return 0
@@ -71,9 +71,7 @@ async def _downgrade(target: str) -> int:
 async def _healthcheck() -> int:
     """Container health probe: configuration valid and MySQL reachable."""
     settings = get_settings()
-    container = build_container(
-        service_name="healthcheck", settings=settings, configure_logs=False
-    )
+    container = build_container(service_name="healthcheck", settings=settings, configure_logs=False)
     try:
         healthy = await container.database.ping()
         revision = await container.database.current_schema_revision()

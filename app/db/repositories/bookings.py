@@ -63,14 +63,10 @@ class BookingAttemptRepository(BaseRepository[BookingAttempt]):
             location_name=None if location_name is None else location_name[:255],
             started_at=utc_now(),
         )
-        self.session.add(attempt)
-        try:
-            await self.session.flush()
-        except IntegrityError:
-            await self.session.rollback()
+        if not await self.try_add(attempt):
             duplicate = await self.get_by_idempotency_key(idempotency_key)
             if duplicate is None:  # pragma: no cover - defensive
-                raise
+                raise ConflictError("duplicate booking attempt could not be resolved")
             return duplicate, False
         return attempt, True
 
@@ -105,9 +101,9 @@ class BookingAttemptRepository(BaseRepository[BookingAttempt]):
         if status is BookingAttemptStatus.SUCCEEDED and watch_slot_success_key:
             attempt.watch_slot_success_key = watch_slot_success_key[:96]
         try:
-            await self.session.flush()
+            async with self.session.begin_nested():
+                await self.session.flush()
         except IntegrityError as exc:
-            await self.session.rollback()
             raise ConflictError("this watch already booked the same slot") from exc
 
     async def has_successful_for_watch_slot(self, key: str) -> bool:
@@ -194,18 +190,14 @@ class CancellationAttemptRepository(BaseRepository[CancellationAttempt]):
             correlation_id=None if correlation_id is None else correlation_id[:32],
             started_at=utc_now(),
         )
-        self.session.add(record)
-        try:
-            await self.session.flush()
-        except IntegrityError:
-            await self.session.rollback()
-            duplicate = await self.session.scalar(
+        if not await self.try_add(record):
+            duplicate = await self.one_or_none(
                 select(CancellationAttempt).where(
                     CancellationAttempt.idempotency_key == idempotency_key
                 )
             )
             if duplicate is None:  # pragma: no cover - defensive
-                raise
+                raise ConflictError("duplicate cancellation attempt could not be resolved")
             return duplicate, False
         return record, True
 
@@ -336,7 +328,11 @@ class AppointmentRepository(BaseRepository[AppointmentCache]):
                 AppointmentCache.telegram_user_id == user_id,
                 AppointmentCache.deleted_at.is_(None),
             )
-            .order_by(AppointmentCache.scheduled_at_utc.asc().nulls_last())
+            # MySQL has no NULLS LAST, so the null-ness is ordered explicitly.
+            .order_by(
+                AppointmentCache.scheduled_at_utc.is_(None).asc(),
+                AppointmentCache.scheduled_at_utc.asc(),
+            )
         )
         if not include_past:
             reference = now or utc_now()
@@ -347,7 +343,8 @@ class AppointmentRepository(BaseRepository[AppointmentCache]):
             )
         else:
             statement = statement.order_by(None).order_by(
-                AppointmentCache.scheduled_at_utc.desc().nulls_last()
+                AppointmentCache.scheduled_at_utc.is_(None).asc(),
+                AppointmentCache.scheduled_at_utc.desc(),
             )
         return await self.paginate(statement, page=page, page_size=page_size)
 
@@ -361,7 +358,8 @@ class AppointmentRepository(BaseRepository[AppointmentCache]):
         account_id: uuid.UUID | None = None,
     ) -> Page[AppointmentCache]:
         statement = select(AppointmentCache).order_by(
-            AppointmentCache.scheduled_at_utc.desc().nulls_last()
+            AppointmentCache.scheduled_at_utc.is_(None).asc(),
+            AppointmentCache.scheduled_at_utc.desc(),
         )
         if status is not None:
             statement = statement.where(AppointmentCache.status == status)

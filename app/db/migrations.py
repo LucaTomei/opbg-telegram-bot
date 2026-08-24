@@ -11,9 +11,9 @@ from app.db.types import Ciphertext
 
 
 def compare_type(
-    context: Any,
-    inspected_column: Any,
-    metadata_column: Any,
+    _context: Any,
+    _inspected_column: Any,
+    _metadata_column: Any,
     inspected_type: TypeEngine[Any],
     metadata_type: TypeEngine[Any],
 ) -> bool | None:

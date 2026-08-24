@@ -7,7 +7,6 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from sqlalchemy import Select, delete, select
-from sqlalchemy.exc import IntegrityError
 
 from app.db.models.notifications import NotificationEvent
 from app.db.repositories.base import BaseRepository, Page, utc_now
@@ -48,11 +47,7 @@ class NotificationRepository(BaseRepository[NotificationEvent]):
             correlation_id=None if correlation_id is None else correlation_id[:32],
         )
         event.payload = payload
-        self.session.add(event)
-        try:
-            await self.session.flush()
-        except IntegrityError:
-            await self.session.rollback()
+        if not await self.try_add(event):
             return None
         return event
 

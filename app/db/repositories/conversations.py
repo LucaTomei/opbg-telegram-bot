@@ -7,7 +7,6 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
 
 from app.db.models.conversations import (
     BookingDraft,
@@ -210,13 +209,7 @@ class CallbackConsumptionRepository(BaseRepository[CallbackConsumption]):
             telegram_user_id=user_id,
             expires_at=utc_now() + timedelta(seconds=ttl_seconds),
         )
-        self.session.add(record)
-        try:
-            await self.session.flush()
-        except IntegrityError:
-            await self.session.rollback()
-            return False
-        return True
+        return await self.try_add(record)
 
     async def purge_expired(self, *, before: datetime) -> int:
         statement = select(CallbackConsumption).where(CallbackConsumption.expires_at < before)

@@ -51,6 +51,7 @@ from app.domain.enums import (
 from app.domain.errors import (
     AccountSuspendedError,
     AmbiguousSearchResult,
+    AuthenticationFailed,
     CircuitOpenError,
     DomainError,
     LockUnavailableError,
@@ -124,7 +125,7 @@ class WatchProcessor:
             )
             try:
                 result = await self._run_inner(session, watch, now=now)
-            except (ReauthenticationRequired, AccountSuspendedError) as exc:
+            except (AuthenticationFailed, ReauthenticationRequired, AccountSuspendedError) as exc:
                 await self._suspend_for_reauth(session, watch, error_code=exc.code)
                 await runs.finish(run_log, outcome="REAUTH_REQUIRED", error_code=exc.code)
                 return WatchRunOutcome(

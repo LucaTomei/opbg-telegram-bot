@@ -11,6 +11,7 @@ import base64
 import os
 import uuid
 from collections.abc import AsyncIterator, Iterator
+from typing import TYPE_CHECKING
 from datetime import UTC, datetime
 
 import pytest
@@ -24,6 +25,10 @@ from app.domain.enums import UserRole, UserStatus
 from app.security.blind_index import BlindIndexService
 from app.security.context import configure_security
 from app.security.encryption import EncryptionService, generate_key_material
+
+if TYPE_CHECKING:
+    from app.composition import Container
+    from tests.support.portal import FakePortal
 
 #: Deterministic key material so encrypted fixtures stay reproducible.
 TEST_ENCRYPTION_KEY = bytes(range(32))
@@ -163,3 +168,19 @@ async def admin_user(clean_session: AsyncSession) -> TelegramUser:
 @pytest.fixture
 def uuid_factory() -> type[uuid.UUID]:
     return uuid.UUID
+
+
+@pytest.fixture
+def portal() -> "FakePortal":
+    """A deterministic synthetic portal shared by the service level tests."""
+    from tests.support.portal import FakePortal
+
+    return FakePortal()
+
+
+@pytest.fixture
+def container(settings: Settings, database: Database, portal: "FakePortal") -> "Container":
+    """A fully wired container whose portal adapter talks to the fake portal."""
+    from tests.support.portal import build_container
+
+    return build_container(settings, database, portal)
