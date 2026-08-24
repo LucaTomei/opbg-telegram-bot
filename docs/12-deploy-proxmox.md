@@ -5,6 +5,7 @@ esempio un Minisforum MS-01. Il bot usa long polling: non serve nessuna porta
 in ingresso, nessun dominio, nessun certificato. Serve solo traffico in uscita
 verso `api.telegram.org` e verso il portale.
 
+- [Su un PCT Docker già esistente](#su-un-pct-docker-già-esistente)
 - [1. Creare il container](#1-creare-il-container)
 - [2. Preparare il sistema](#2-preparare-il-sistema)
 - [3. Installare Docker](#3-installare-docker)
@@ -15,6 +16,38 @@ verso `api.telegram.org` e verso il portale.
 - [8. Backup](#8-backup)
 - [9. Aggiornare](#9-aggiornare)
 - [Diagnosi](#diagnosi)
+
+## Su un PCT Docker già esistente
+
+Se hai già un container con Docker e una cartella di stack, salta i passi 1-3 e
+parti dal 4, con due accortezze.
+
+**Spazio negli indirizzi Docker.** Ogni stack crea una rete bridge e Docker le
+assegna una `/16` da un pool predefinito che ne contiene sedici. Su un host con
+molti stack l'avvio fallisce con `all predefined address pools have been fully
+subnetted`. Conta le reti e, se sei vicino al limite, allarga il pool:
+
+```bash
+docker network ls | wc -l
+cat > /etc/docker/daemon.json <<'JSON'
+{ "default-address-pools": [{ "base": "172.20.0.0/14", "size": 24 }] }
+JSON
+systemctl restart docker
+```
+
+`size: 24` dà 1024 reti invece di 16. Il riavvio del demone ferma e riavvia
+tutti i container dell'host: fallo in una finestra tranquilla.
+
+**File di Compose.** In produzione va usato solo `compose.yaml`. Invece di
+ricordarsi `-f compose.yaml` a ogni comando, fissalo nel file `.env` dello
+stack, che Compose legge anche per la propria configurazione:
+
+```dotenv
+COMPOSE_FILE=compose.yaml
+```
+
+Da lì in poi `docker compose up -d` fa la cosa giusta, e nessuna porta viene
+pubblicata.
 
 ## 1. Creare il container
 
@@ -103,20 +136,21 @@ molto disco: vedi [Diagnosi](#diagnosi).
 
 ## 4. Portare il codice nel container
 
-Con una deploy key di sola lettura, generata **dentro** il container:
+Il repository è privato, quindi serve una deploy key di sola lettura, generata
+**dentro** il container:
 
 ```bash
-su - opbg
 ssh-keygen -t ed25519 -C "opbg-bot@ms01" -f ~/.ssh/id_ed25519 -N ""
 cat ~/.ssh/id_ed25519.pub
 ```
 
 Registra la chiave pubblica su GitHub in *Settings → Deploy keys* del
-repository, senza permesso di scrittura, poi:
+repository, senza permesso di scrittura, poi clona nella cartella degli stack:
 
 ```bash
-git clone git@github.com:LucaTomei/opbg-telegram-bot.git ~/opbg-telegram-bot
-cd ~/opbg-telegram-bot
+git clone git@github.com:LucaTomei/opbg-telegram-bot.git \
+  /opt/docker/stacks/opbg-telegram-bot
+cd /opt/docker/stacks/opbg-telegram-bot
 ```
 
 In alternativa, senza deploy key, copia il progetto dal tuo Mac:
@@ -130,13 +164,24 @@ rsync -av --exclude .git --exclude .venv --exclude .env \
 
 ```bash
 cp .env.example .env
-python3 scripts/generate_keys.py >> .env
+python3 scripts/generate_keys.py > /tmp/keys.env
+while IFS='=' read -r name value; do
+  sed -i "s|^${name}=.*|${name}=${value}|" .env
+done < /tmp/keys.env
+shred -u /tmp/keys.env
 ```
 
-Lo script stampa `APP_SECRET_KEY`, `APP_ENCRYPTION_KEY`, `APP_BLIND_INDEX_KEY`,
-`MYSQL_PASSWORD` e `MYSQL_ROOT_PASSWORD`. Finiscono in fondo al file e hanno
-precedenza sulle righe vuote copiate dall'esempio; per pulizia, cancella le
-cinque righe vuote iniziali.
+Lo script riempie `APP_SECRET_KEY`, `APP_ENCRYPTION_KEY`, `APP_BLIND_INDEX_KEY`,
+`MYSQL_PASSWORD` e `MYSQL_ROOT_PASSWORD` al loro posto, senza duplicare righe.
+Se nel container non c'è Python, `openssl` produce lo stesso formato:
+
+```bash
+for name in APP_SECRET_KEY APP_ENCRYPTION_KEY APP_BLIND_INDEX_KEY \
+            MYSQL_PASSWORD MYSQL_ROOT_PASSWORD; do
+  value="$(openssl rand -base64 32 | tr '+/' '-_' | tr -d '=')"
+  sed -i "s|^${name}=.*|${name}=${value}|" .env
+done
+```
 
 Completa a mano:
 
@@ -162,20 +207,21 @@ chmod 600 .env
 
 ## 6. Primo avvio
 
-```bash
-docker compose -f compose.yaml build
-docker compose -f compose.yaml run --rm migrate
-docker compose -f compose.yaml up -d
+Fissa il file di Compose una volta per tutte, aggiungendo al `.env`:
+
+```dotenv
+COMPOSE_FILE=compose.yaml
 ```
 
-`-f compose.yaml` è importante: senza, Compose applica anche
-`compose.override.yaml`, che è il profilo di sviluppo e pubblica MySQL su
-`127.0.0.1:13306`. In produzione nessun servizio deve pubblicare porte.
-
-Per non ripeterlo a ogni comando:
+Senza, Compose applicherebbe anche `compose.override.yaml`, che è il profilo di
+sviluppo e pubblica MySQL su `127.0.0.1:13306`. In produzione nessun servizio
+deve pubblicare porte. `COMPOSE_FILE` è una variabile che Compose legge per sé:
+non entra nei container.
 
 ```bash
-echo 'export COMPOSE_FILE=compose.yaml' >> ~/.profile
+docker compose build
+docker compose run --rm migrate
+docker compose up -d
 ```
 
 I container hanno `restart: unless-stopped` e Docker parte al boot, quindi il
@@ -191,7 +237,13 @@ docker compose logs --tail=100 bot worker
 ```
 
 `docker compose ps` deve mostrare `mysql`, `bot` e `worker` in `running` e
-healthy, e nessuna porta pubblicata. Se `bot` continua a riavviarsi, cerca
+healthy, con la colonna delle porte vuota. Controllo esplicito:
+
+```bash
+docker compose ps --format '{{.Service}}  {{.Status}}  [{{.Ports}}]'
+```
+
+Le parentesi devono essere vuote per tutti e tre. Se `bot` continua a riavviarsi, cerca
 `BOT_TOKEN_REJECTED` nei log: il token è sbagliato.
 
 Poi da Telegram:
@@ -213,7 +265,7 @@ docker compose --profile backup run --rm backup
 Pianificalo dal container, come utente `opbg`:
 
 ```cron
-30 3 * * * cd /home/opbg/opbg-telegram-bot && COMPOSE_FILE=compose.yaml docker compose --profile backup run --rm backup >> /home/opbg/backup.log 2>&1
+30 3 * * * cd /opt/docker/stacks/opbg-telegram-bot && docker compose --profile backup run --rm backup >> /var/log/opbg-backup.log 2>&1
 ```
 
 Copia gli archivi fuori dal container, altrimenti un guasto del PCT si porta
@@ -233,7 +285,7 @@ La procedura di restore è in [`11-runbook.md`](11-runbook.md#restore).
 ## 9. Aggiornare
 
 ```bash
-cd ~/opbg-telegram-bot
+cd /opt/docker/stacks/opbg-telegram-bot
 docker compose --profile backup run --rm backup   # 1. backup verificato
 git pull                                          # 2. nuovo codice
 docker compose build                              # 3. nuova immagine
