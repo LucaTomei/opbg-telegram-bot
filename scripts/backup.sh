@@ -9,6 +9,7 @@ set -eu
 BACKUP_DIR="${BACKUP_DIR:-/backups}"
 RETENTION_DAYS="${BACKUP_RETENTION_DAYS:-14}"
 PASSPHRASE_FILE="${BACKUP_PASSPHRASE_FILE:-/run/secrets/backup_passphrase}"
+PASSPHRASE_SOURCE=""
 DATABASE="${MYSQL_DATABASE:-opbg_bot}"
 HOST="${DATABASE_HOST:-mysql}"
 PORT="${DATABASE_PORT:-3306}"
@@ -16,8 +17,14 @@ TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 SCHEMA_VERSION="${SCHEMA_VERSION:-unknown}"
 ARTIFACT="${BACKUP_DIR}/opbg-${TIMESTAMP}-${SCHEMA_VERSION}.sql.gz.enc"
 
-if [ ! -r "${PASSPHRASE_FILE}" ]; then
-  echo "backup passphrase file is missing: ${PASSPHRASE_FILE}" >&2
+# The passphrase may come from a mounted secret file or, for a one-off run,
+# from the environment. It is never written next to the archive.
+if [ -r "${PASSPHRASE_FILE}" ]; then
+  PASSPHRASE_SOURCE="file:${PASSPHRASE_FILE}"
+elif [ -n "${BACKUP_PASSPHRASE:-}" ]; then
+  PASSPHRASE_SOURCE="env:BACKUP_PASSPHRASE"
+else
+  echo "no backup passphrase: mount ${PASSPHRASE_FILE} or set BACKUP_PASSPHRASE" >&2
   exit 2
 fi
 
@@ -33,11 +40,10 @@ mysqldump \
   --quick \
   --routines \
   --events \
-  --set-gtid-purged=OFF \
   --default-character-set=utf8mb4 \
   "${DATABASE}" \
   | gzip -9 \
-  | openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -salt -pass "file:${PASSPHRASE_FILE}" \
+  | openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -salt -pass "${PASSPHRASE_SOURCE}" \
   > "${ARTIFACT}"
 
 SIZE="$(wc -c < "${ARTIFACT}" | tr -d ' ')"

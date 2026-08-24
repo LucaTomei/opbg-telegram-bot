@@ -15,6 +15,7 @@ from types import FrameType
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
+from aiogram.exceptions import TelegramUnauthorizedError
 from aiogram.types import BotCommand, BotCommandScopeDefault
 
 from app.bot.middleware.auth import AdminOnlyMiddleware, AuthorizationMiddleware
@@ -95,7 +96,18 @@ async def run() -> None:
     async with container.database.session() as session:
         await container.users.bootstrap_admins(session)
 
-    await bot.set_my_commands(list(BOT_COMMANDS), scope=BotCommandScopeDefault())
+    try:
+        await bot.set_my_commands(list(BOT_COMMANDS), scope=BotCommandScopeDefault())
+    except TelegramUnauthorizedError:
+        # A wrong or revoked token is an operator error, not a crash: report it
+        # clearly and shut down cleanly instead of leaking an open session.
+        logger.error(
+            "the Telegram bot token was rejected; check TELEGRAM_BOT_TOKEN",
+            extra={"event_code": "BOT_TOKEN_REJECTED"},
+        )
+        await bot.session.close()
+        await container.dispose()
+        raise SystemExit(2) from None
     logger.info("bot starting", extra={"event_code": "BOT_STARTUP", "version": APP_VERSION})
 
     stop_event = asyncio.Event()

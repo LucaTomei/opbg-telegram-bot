@@ -377,6 +377,7 @@ async def test_cleanup_removes_expired_records(
 
     removed = await CleanupTask(container.settings).run(clean_session)
     assert removed["connect_tickets"] >= 1
+    assert "download_links" in removed
 
 
 # --- notification delivery ---------------------------------------------------

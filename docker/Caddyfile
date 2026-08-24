@@ -2,7 +2,6 @@
 #
 # Only the routes the product needs are forwarded; everything else is refused.
 # Automatic HTTPS provides the certificate for {$APP_DOMAIN}.
-
 {
 	email {$ACME_EMAIL}
 	admin 0.0.0.0:2019

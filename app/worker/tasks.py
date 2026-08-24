@@ -607,7 +607,7 @@ class CleanupTask:
         moment = now or utc_now()
         return {
             "connect_tickets": await ConnectTicketRepository(session).purge_expired(before=moment),
-            "download_tokens": await DownloadTokenRepository(session).purge_expired(before=moment),
+            "download_links": await DownloadTokenRepository(session).purge_expired(before=moment),
             "confirmation_nonces": await ConfirmationNonceRepository(session).purge_expired(
                 before=moment
             ),

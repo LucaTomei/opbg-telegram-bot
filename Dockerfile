@@ -26,8 +26,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PATH="/opt/venv/bin:$PATH" \
     APP_HOME=/app
 
+# `default-mysql-client` and `openssl` are required by the backup profile,
+# which dumps and encrypts the database from this same image.
 RUN apt-get update \
-    && apt-get install --no-install-recommends -y tini curl \
+    && apt-get install --no-install-recommends -y tini curl openssl default-mysql-client \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --system --gid 10001 app \
     && useradd --system --uid 10001 --gid app --home-dir ${APP_HOME} --shell /usr/sbin/nologin app
@@ -41,9 +43,12 @@ COPY --chown=app:app alembic ./alembic
 COPY --chown=app:app app ./app
 COPY --chown=app:app docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 
+# The backup volume inherits this ownership when Docker initialises it, so the
+# job can write its archives without running as root.
 RUN chmod 0555 /usr/local/bin/entrypoint.sh \
     && python -m compileall -q app \
-    && chown -R app:app ${APP_HOME}
+    && mkdir -p /backups \
+    && chown -R app:app ${APP_HOME} /backups
 
 USER app
 
