@@ -53,7 +53,7 @@ def _test_settings_env() -> dict[str, str]:
         "APP_ENCRYPTION_KEY": key,
         "APP_BLIND_INDEX_KEY": blind,
         "PUBLIC_BASE_URL": "https://bot.test.invalid",
-        "TELEGRAM_BOT_TOKEN": "424242:AAH0000000000000000000000000000000",
+        "TELEGRAM_BOT_TOKEN": "424242:SYNTHETIC-TOKEN-NOT-A-REAL-BOT",
         "TELEGRAM_BOT_USERNAME": "opbg_test_bot",
         "TELEGRAM_ADMIN_IDS": "1001",
         "MYSQL_PASSWORD": base64.urlsafe_b64encode(bytes(range(96, 128))).decode(),

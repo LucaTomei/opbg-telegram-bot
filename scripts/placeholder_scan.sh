@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 # Fail when production code still contains placeholders or unimplemented paths.
+#
+# Run it with `bash scripts/placeholder_scan.sh`. It is also part of the CI
+# guardrails job.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -12,37 +15,43 @@ report() {
   status=1
 }
 
-# TODO/FIXME/XXX/HACK markers anywhere in shipped code.
-if git grep -nEI '\b(TODO|FIXME|XXX|HACK)\b' -- app alembic docker scripts > /tmp/opbg_todo.txt 2>/dev/null; then
-  if [ -s /tmp/opbg_todo.txt ]; then
-    while IFS= read -r line; do report "placeholder marker: ${line}"; done < /tmp/opbg_todo.txt
-  fi
-fi
-rm -f /tmp/opbg_todo.txt
+# The scanners necessarily spell out the patterns they look for, so they never
+# scan themselves. Every other file under scripts/ is still checked.
+EXCLUDE=(':!scripts/placeholder_scan.sh' ':!scripts/secret_scan.sh')
 
-# Bare `pass`, `...` bodies and NotImplementedError in application code.
-if git grep -nEI '^[[:space:]]*pass[[:space:]]*$' -- app alembic > /tmp/opbg_pass.txt 2>/dev/null; then
-  if [ -s /tmp/opbg_pass.txt ]; then
-    while IFS= read -r line; do report "bare pass statement: ${line}"; done < /tmp/opbg_pass.txt
+scan() {
+  local label="$1"
+  shift
+  local output
+  output="$(git grep -nEI "$@" || true)"
+  if [ -n "${output}" ]; then
+    while IFS= read -r line; do
+      [ -n "${line}" ] && report "${label}: ${line}"
+    done <<< "${output}"
   fi
-fi
-rm -f /tmp/opbg_pass.txt
+}
 
-if git grep -nEI '^[[:space:]]*\.\.\.[[:space:]]*$' -- app | grep -v 'Protocol' > /tmp/opbg_ellipsis.txt 2>/dev/null; then
-  if [ -s /tmp/opbg_ellipsis.txt ]; then
-    while IFS= read -r line; do report "ellipsis body: ${line}"; done < /tmp/opbg_ellipsis.txt
-  fi
-fi
-rm -f /tmp/opbg_ellipsis.txt
+# 1. Leftover markers anywhere in shipped code.
+scan "placeholder marker" '\b(TODO|FIXME|XXX|HACK)\b' \
+  -- app alembic docker scripts "${EXCLUDE[@]}"
 
-# Only a *raised* NotImplementedError is a placeholder; suppressing the one
-# raised by asyncio signal handlers on unsupported platforms is legitimate.
-if git grep -nEI 'raise[[:space:]]+NotImplementedError' -- app alembic > /tmp/opbg_ni.txt 2>/dev/null; then
-  if [ -s /tmp/opbg_ni.txt ]; then
-    while IFS= read -r line; do report "unimplemented path: ${line}"; done < /tmp/opbg_ni.txt
-  fi
+# 2. Bare `pass` bodies in application code.
+scan "bare pass statement" '^[[:space:]]*pass[[:space:]]*$' \
+  -- app alembic "${EXCLUDE[@]}"
+
+# 3. Ellipsis bodies outside Protocol declarations.
+ellipsis="$(git grep -nEI '^[[:space:]]*\.\.\.[[:space:]]*$' -- app "${EXCLUDE[@]}" 2>/dev/null \
+  | grep -v 'Protocol' || true)"
+if [ -n "${ellipsis}" ]; then
+  while IFS= read -r line; do
+    [ -n "${line}" ] && report "ellipsis body: ${line}"
+  done <<< "${ellipsis}"
 fi
-rm -f /tmp/opbg_ni.txt
+
+# 4. Only a *raised* NotImplementedError is a placeholder; suppressing the one
+#    asyncio raises for signal handlers on unsupported platforms is legitimate.
+scan "unimplemented path" 'raise[[:space:]]+NotImplementedError' \
+  -- app alembic "${EXCLUDE[@]}"
 
 if [ "${status}" -eq 0 ]; then
   echo "placeholder scan: clean"

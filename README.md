@@ -144,6 +144,12 @@ make verify               # formato, lint, tipi, test, audit
 
 Comandi disponibili: `make help`.
 
+`make verify` esegue i controlli locali. **Prima di un push usa
+`make verify-ci`**: aggiunge `make audit-ci`, che rilancia i due scanner in un
+container Ubuntu identico a quello della CI. Serve perché `git grep` di Apple e
+quello GNU trattano diversamente i confini di parola `\b`: uno scanner può
+passare su macOS e fallire sul runner.
+
 Le dipendenze dirette sono fissate in [`pyproject.toml`](pyproject.toml) e
 bloccate in [`requirements.lock`](requirements.lock) e
 [`requirements-dev.lock`](requirements-dev.lock); rigenerale con `make lock`.

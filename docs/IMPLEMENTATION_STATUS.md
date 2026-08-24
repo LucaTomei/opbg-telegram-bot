@@ -62,7 +62,7 @@ Tutti i comandi sono stati eseguiti il 2026-08-24 sulla revisione corrente.
 | Type checker | `mypy app tests` | ✅ 144 file, nessun errore (modalità `strict`) |
 | Test unit/contract/security | `pytest tests/unit tests/contract tests/security` | ✅ 323 passati, 5 deselezionati (live) |
 | Test integrazione (MySQL) | `pytest tests/integration` | ✅ 255 passati |
-| Suite completa | `pytest` | ✅ 578 passati, 5 deselezionati |
+| Suite completa | `pytest` | ✅ 580 passati, 5 deselezionati |
 | Copertura | `pytest --cov=app` | ✅ 79% complessivo (soglia documentata: 70%) |
 | Compose config | `docker compose config` | ✅ configurazione valida |
 | Build immagine | `docker compose build` | ✅ `opbg-telegram-bot:1.0.0` |
@@ -72,8 +72,9 @@ Tutti i comandi sono stati eseguiti il 2026-08-24 sulla revisione corrente.
 | Backup | `docker compose --profile backup run --rm backup` | ✅ `opbg-<timestamp>-0003_clean_internal_columns.sql.gz.enc`, esito `SUCCESS` in `backup_status` |
 | Restore | `restore.sh <archivio> opbg_bot_restore_check` | ✅ 28 tabelle ripristinate su database separato |
 | Spegnimento pulito | `docker compose stop worker` | ✅ `WORKER_STOPPED` con rilascio dei lease |
-| Secret scan | `bash scripts/secret_scan.sh` | ✅ pulito |
-| Scan placeholder | `bash scripts/placeholder_scan.sh` | ✅ pulito (nessun `TODO`/`FIXME`/`pass`/`NotImplementedError`) |
+| Secret scan | `bash scripts/secret_scan.sh` | ✅ pulito; ogni rilevatore verificato iniettando un finto segreto su Ubuntu |
+| Scan placeholder | `bash scripts/placeholder_scan.sh` | ✅ pulito; rilevatori verificati su Ubuntu |
+| Guardrail su Linux | `make audit-ci` | ✅ scanner eseguiti in un container identico al runner |
 | Audit bottoni | `python scripts/handler_audit.py` | ✅ 104 payload di callback, tutti gestiti |
 | Configurazione senza voci morte | `pytest tests/security/test_ui_completeness.py` | ✅ ogni variabile dichiarata è usata e ogni variabile documentata esiste |
 | CI | `.github/workflows/ci.yml` | ✅ job `guardrails` (secret e placeholder scan), `quality` (formato, lint, tipi, audit bottoni, test con soglia 70%), `image` (build e `compose config`); i test live restano deselezionati |

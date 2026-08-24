@@ -154,3 +154,24 @@ def test_every_documented_variable_exists_in_the_settings() -> None:
         "backup_passphrase_file",
     }
     assert documented - known == set()
+
+
+def test_the_repository_guardrails_pass() -> None:
+    """The scanners that gate CI must also pass as part of the suite."""
+    for script in ("secret_scan.sh", "placeholder_scan.sh"):
+        result = subprocess.run(
+            ["bash", str(ROOT / "scripts" / script)],
+            capture_output=True,
+            text=True,
+            cwd=ROOT,
+            check=False,
+        )
+        assert result.returncode == 0, f"{script}:\n{result.stdout}\n{result.stderr}"
+
+
+def test_the_scanners_never_scan_themselves() -> None:
+    """A scanner that matches its own patterns would fail on every run."""
+    for script in ("secret_scan.sh", "placeholder_scan.sh"):
+        source = (ROOT / "scripts" / script).read_text(encoding="utf-8")
+        assert "':!scripts/secret_scan.sh'" in source, script
+        assert "':!scripts/placeholder_scan.sh'" in source, script

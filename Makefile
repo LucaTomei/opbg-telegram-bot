@@ -68,8 +68,19 @@ audit: ## Run the repository audits (buttons, secrets, placeholders)
 	bash scripts/secret_scan.sh
 	bash scripts/placeholder_scan.sh
 
+.PHONY: audit-ci
+audit-ci: ## Run the repository audits in a CI-identical Linux container
+	@docker run --rm -v "$(CURDIR):/repo:ro" ubuntu:24.04 bash -c '\
+		apt-get update -qq >/dev/null && apt-get install -y -qq git >/dev/null; \
+		cp -r /repo /tmp/work && cd /tmp/work; \
+		git config --global --add safe.directory /tmp/work; \
+		bash scripts/secret_scan.sh && bash scripts/placeholder_scan.sh'
+
 .PHONY: verify
 verify: format-check lint typecheck test audit ## Run every local quality gate
+
+.PHONY: verify-ci
+verify-ci: verify audit-ci ## Everything CI runs, including the Linux-only audits
 
 .PHONY: migrate
 migrate: ## Apply migrations locally

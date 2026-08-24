@@ -125,7 +125,7 @@ class BotHarness:
     def build(cls, container: Container) -> BotHarness:
         session = FakeSession()
         bot = Bot(
-            token=f"{BOT_ID}:AAH0000000000000000000000000000000",
+            token=f"{BOT_ID}:SYNTHETIC-TOKEN-NOT-A-REAL-BOT",
             session=session,
             default=DefaultBotProperties(parse_mode=ParseMode.HTML),
         )
