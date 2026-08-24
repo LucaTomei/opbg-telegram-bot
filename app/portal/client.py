@@ -193,9 +193,7 @@ class PortalClient:
 
     def _backoff_delay(self, attempt: int, error: Exception | None) -> float:
         if isinstance(error, PortalRateLimited) and error.retry_after_seconds:
-            return float(
-                min(error.retry_after_seconds, self._settings.portal_backoff_max_seconds)
-            )
+            return float(min(error.retry_after_seconds, self._settings.portal_backoff_max_seconds))
         base: float = self._settings.portal_backoff_base_seconds * (2**attempt)
         capped: float = min(base, self._settings.portal_backoff_max_seconds)
         return capped + self._jitter()

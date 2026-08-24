@@ -80,9 +80,7 @@ class PortalAccount(UuidPkMixin, TimestampMixin, VersionMixin, SoftDeleteMixin, 
     cookie_jar = encrypted_json("cookie_jar_ciphertext")
     portal_metadata = encrypted_json("portal_metadata_ciphertext")
 
-    user: Mapped[TelegramUser] = relationship(
-        back_populates="portal_accounts", lazy="noload"
-    )
+    user: Mapped[TelegramUser] = relationship(back_populates="portal_accounts", lazy="noload")
     patients: Mapped[list[Patient]] = relationship(back_populates="account", lazy="noload")
 
     @property
