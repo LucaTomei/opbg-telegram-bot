@@ -7,9 +7,6 @@ on:
   workflow_dispatch:
 
 # Live portal tests are never enabled here: CI must not touch the real portal.
-env:
-  PYTHON_VERSION: "3.13"
-  TEST_DATABASE_URL: mysql+aiomysql://root:ci-root-password@127.0.0.1:13306/opbg_bot_test
 
 # A new push on the same ref cancels the run still in flight: there is a single
 # self-hosted runner and a superseded run is wasted time on it.
@@ -100,14 +97,22 @@ jobs:
     if: needs.changes.outputs.code == 'true'
     runs-on: [self-hosted, linux, x64, docker]
     timeout-minutes: 30
+    # The job runs inside the official image instead of installing Python on the
+    # runner: the interpreter is then the same one the application is built on,
+    # whatever the runner's own distribution is, and nothing is left behind on
+    # the host.
+    container:
+      image: python:3.13
+    env:
+      # Inside a job container the service is reached by its name, not through a
+      # port published on the host.
+      TEST_DATABASE_URL: mysql+aiomysql://root:ci-root-password@mysql:3306/opbg_bot_test
     services:
       mysql:
         image: mysql:8.4
         env:
           MYSQL_ROOT_PASSWORD: ci-root-password
           MYSQL_DATABASE: opbg_bot_test
-        ports:
-          - 13306:3306
         options: >-
           --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pci-root-password --silent"
           --health-interval=10s
@@ -118,11 +123,11 @@ jobs:
       - uses: actions/checkout@v4
         with:
           clean: true
-      - uses: actions/setup-python@v5
+      - uses: actions/cache@v4
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
-          cache: pip
-          cache-dependency-path: requirements-dev.lock
+          path: /root/.cache/pip
+          key: pip-3.13-${{ hashFiles('requirements-dev.lock') }}
+          restore-keys: pip-3.13-
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
