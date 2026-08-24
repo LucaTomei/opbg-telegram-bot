@@ -7,6 +7,8 @@ SHELL := /bin/bash
 PYTHON ?= .venv/bin/python
 PIP ?= .venv/bin/pip
 COMPOSE ?= docker compose
+# Development targets add the dev overrides explicitly; production never does.
+COMPOSE_DEV ?= docker compose -f compose.yaml -f compose.dev.yaml
 COMPOSE_PROD ?= docker compose -f compose.yaml
 
 .DEFAULT_GOAL := help
@@ -101,11 +103,11 @@ config: ## Validate the Compose configuration
 .PHONY: up
 up: ## Start the stack (migrations first)
 	$(COMPOSE) run --rm migrate
-	$(COMPOSE) up -d
+	$(COMPOSE_DEV) up -d
 
 .PHONY: down
 down: ## Stop the stack, keeping the data volume
-	$(COMPOSE) down
+	$(COMPOSE_DEV) down
 
 .PHONY: logs
 logs: ## Tail the application logs

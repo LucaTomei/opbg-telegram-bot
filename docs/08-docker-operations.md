@@ -6,7 +6,7 @@ Il deploy si compone di:
 
 - `Dockerfile` multi-stage non-root;
 - `compose.yaml` per la produzione;
-- `compose.override.yaml` per lo sviluppo;
+- `compose.dev.yaml` per lo sviluppo, applicato solo esplicitamente;
 - entrypoint sicuro;
 - script migrazioni, backup, restore, health e key generation;
 - `Makefile` o task runner con comandi documentati;
@@ -39,7 +39,8 @@ Nessun servizio pubblica porte: il bot usa long polling.
 ## Migrazioni
 
 - Job/command separato `migrate`.
-- Deploy esegue migrazione una sola volta prima di avviare servizi applicativi.
+- Deploy esegue migrazione una sola volta prima di avviare servizi applicativi:
+  `bot` e `worker` dipendono dal completamento di `migrate`.
 - Lock per evitare migrazioni concorrenti.
 - Rollback documentato; non automatico se distruttivo.
 - Test da database vuoto e upgrade dalla migrazione precedente.
@@ -65,7 +66,7 @@ container. Non effettua login né prenotazioni.
 - Nessuna porta pubblicata in produzione: il bot usa long polling e non riceve
   connessioni in ingresso.
 - MySQL è raggiungibile solo dalla rete interna del Compose.
-- In sviluppo `compose.override.yaml` pubblica MySQL su `127.0.0.1:13306` per i
+- In sviluppo `compose.dev.yaml` pubblica MySQL su `127.0.0.1:13306` per i
   test di integrazione.
 
 ## Avvio atteso
@@ -75,7 +76,6 @@ Il README finale deve documentare equivalenti di:
 ```bash
 cp .env.example .env
 docker compose build
-docker compose run --rm migrate
 docker compose up -d
 docker compose ps
 docker compose logs --tail=200 bot worker

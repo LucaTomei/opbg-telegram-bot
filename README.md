@@ -100,8 +100,7 @@ Non serve un dominio, né un certificato, né aprire porte sul router.
 cp .env.example .env
 make keys                 # genera i segreti e incollali in .env
 docker compose build
-docker compose run --rm migrate
-docker compose up -d
+docker compose up -d      # applica le migrazioni, poi avvia bot e worker
 docker compose ps
 docker compose logs --tail=200 bot worker
 ```
@@ -189,9 +188,8 @@ Aggiornamento:
 ```bash
 docker compose --profile backup run --rm backup   # 1. backup verificato
 docker compose build                              # 2. nuova immagine
-docker compose run --rm migrate                   # 3. migrazioni
-docker compose up -d                              # 4. restart
-docker compose ps                                 # 5. health
+docker compose up -d                              # 3. migrazioni e restart
+docker compose ps                                 # 4. health
 ```
 
 Rollback applicativo: ripristinare il tag precedente dell'immagine e

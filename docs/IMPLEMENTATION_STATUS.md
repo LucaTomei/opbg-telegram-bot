@@ -31,7 +31,7 @@ reali e sono elencate in [Verifiche esterne](#verifiche-esterne).
 | Servizi | `app/services/{users,accounts,portal_sessions,search,bookings,appointments,watches,notifications,confirmations,admin,locks,mapping,slot_codec}.py` |
 | Bot Telegram | `app/bot/{texts,callbacks,storage,notifications}.py`, `app/bot/{routers,keyboards,middleware,presenters}/*` |
 | Worker | `app/worker/{scheduler,tasks,heartbeat,leases}.py` |
-| Operazioni | `Dockerfile`, `compose.yaml`, `compose.override.yaml`, `docker/`, `scripts/`, `Makefile`, `.github/workflows/ci.yml` |
+| Operazioni | `Dockerfile`, `compose.yaml`, `compose.dev.yaml`, `docker/`, `scripts/`, `Makefile`, `.github/workflows/ci.yml` |
 
 Non esiste alcun livello web: il prodotto è interamente dentro Telegram e
 nessun servizio pubblica porte in produzione.
@@ -111,7 +111,7 @@ critici misurati singolarmente:
 | AC-019 | Auth scaduta sospende solo l'account e chiede re-auth | `app/services/portal_sessions.py`, `app/worker/tasks.py` | `tests/integration/test_worker.py::test_authentication_failure_suspends_only_that_account`, `tests/integration/test_bot_credentials.py::test_reauthentication_asks_only_for_email_and_password` | ✅ |
 | AC-020 | Il circuit breaker evita raffiche durante un guasto | `app/portal/circuit_breaker.py` | `tests/integration/test_rate_limit_and_breaker.py`, `tests/integration/test_worker.py::test_the_circuit_breaker_defers_instead_of_failing` | ✅ |
 | AC-021 | Il restart conserva conversazioni, lease e idempotenza | `app/bot/storage.py`, `app/db/repositories/watches.py`, `app/worker/scheduler.py` | `tests/integration/test_repositories.py::test_conversation_state_survives_a_restart`, `tests/integration/test_concurrency.py::test_an_expired_lease_is_recovered`, `tests/integration/test_scheduler.py::test_shutdown_releases_the_leases_of_this_worker` | ✅ |
-| AC-022 | MySQL non è esposto in produzione | `compose.yaml` (nessun `ports`), `compose.override.yaml` (solo sviluppo) | `docker compose -f compose.yaml config` non pubblica alcuna porta, per nessun servizio | ✅ |
+| AC-022 | MySQL non è esposto in produzione | `compose.yaml` (nessun `ports`), `compose.dev.yaml` (solo sviluppo, mai automatico) | `docker compose config` non pubblica alcuna porta, per nessun servizio | ✅ |
 | AC-023 | Repo e immagini senza HAR, `.env`, segreti o dati reali | `.gitignore`, `.dockerignore`, `scripts/secret_scan.sh` | `bash scripts/secret_scan.sh`, `tests/security/test_no_destructive_live_tests.py` | ✅ |
 | AC-024 | Tutti i servizi Docker diventano healthy da DB vuoto | `Dockerfile`, `compose.yaml`, `app/cli.py` | `docker compose down -v` → `migrate` → `up` → `ps`: `mysql` e `worker` healthy; `bot` richiede un token reale (vedi sotto) | ⚠️ parziale |
 | AC-025 | Nessun bottone privo di handler o con placeholder | `app/bot/*` | `python scripts/handler_audit.py` (103 payload), `bash scripts/placeholder_scan.sh` | ✅ |

@@ -38,16 +38,10 @@ systemctl restart docker
 `size: 24` dà 1024 reti invece di 16. Il riavvio del demone ferma e riavvia
 tutti i container dell'host: fallo in una finestra tranquilla.
 
-**File di Compose.** In produzione va usato solo `compose.yaml`. Invece di
-ricordarsi `-f compose.yaml` a ogni comando, fissalo nel file `.env` dello
-stack, che Compose legge anche per la propria configurazione:
-
-```dotenv
-COMPOSE_FILE=compose.yaml
-```
-
-Da lì in poi `docker compose up -d` fa la cosa giusta, e nessuna porta viene
-pubblicata.
+**File di Compose.** Non serve nessun accorgimento: gli override di sviluppo
+stanno in `compose.dev.yaml`, che Compose non carica da solo. `docker compose
+up -d` usa solo `compose.yaml`, non pubblica porte e applica le migrazioni prima
+di avviare `bot` e `worker`.
 
 ## 1. Creare il container
 
@@ -207,22 +201,15 @@ chmod 600 .env
 
 ## 6. Primo avvio
 
-Fissa il file di Compose una volta per tutte, aggiungendo al `.env`:
-
-```dotenv
-COMPOSE_FILE=compose.yaml
-```
-
-Senza, Compose applicherebbe anche `compose.override.yaml`, che è il profilo di
-sviluppo e pubblica MySQL su `127.0.0.1:13306`. In produzione nessun servizio
-deve pubblicare porte. `COMPOSE_FILE` è una variabile che Compose legge per sé:
-non entra nei container.
-
 ```bash
 docker compose build
-docker compose run --rm migrate
 docker compose up -d
 ```
+
+`up` esegue `migrate` e aspetta che finisca prima di avviare `bot` e `worker`,
+quindi un solo comando basta anche al primo avvio. Su un aggiornamento, però,
+`up` **non** ricostruisce l'immagine se il tag esiste già: `build` va eseguito
+prima, sempre.
 
 I container hanno `restart: unless-stopped` e Docker parte al boot, quindi il
 container LXC creato con `--onboot 1` riporta su tutto da solo dopo un riavvio
@@ -289,9 +276,8 @@ cd /opt/docker/stacks/opbg-telegram-bot
 docker compose --profile backup run --rm backup   # 1. backup verificato
 git pull                                          # 2. nuovo codice
 docker compose build                              # 3. nuova immagine
-docker compose run --rm migrate                   # 4. migrazioni
-docker compose up -d                              # 5. restart
-docker compose ps                                 # 6. health
+docker compose up -d                              # 4. migrazioni e restart
+docker compose ps                                 # 5. health
 ```
 
 Per tornare indietro: `git checkout <tag-precedente>`, ricostruisci e riavvia.
@@ -348,3 +334,22 @@ docker compose logs worker --tail=100
 ```
 
 Poi, da Telegram, **Amministrazione → Stato sistema**.
+
+## Deploy da un'interfaccia Docker
+
+Uno stack gestito da una UI (Arcane, Portainer, Dockge) funziona senza
+adattamenti, a tre condizioni.
+
+1. **La UI deve clonare tutto il repository**, non il solo `compose.yaml`: il
+   servizio applicativo ha una `build`, quindi servono `Dockerfile`, `app/`,
+   `alembic/` e `scripts/`.
+2. **Le variabili vanno nel `.env` del progetto.** Nessun segreto va scritto
+   dentro `compose.yaml`, che è versionato.
+3. **Su ogni aggiornamento va forzata la ricostruzione dell'immagine.** Compose
+   costruisce solo quando il tag manca: dopo un `git pull` il tag
+   `opbg-telegram-bot:1.0.0` esiste già e un semplice redeploy riavvierebbe il
+   codice vecchio. Se la UI non offre un'opzione di rebuild, esegui
+   `docker compose build` da shell prima del redeploy.
+
+Il profilo `backup` non è pensato per una UI: resta un job di cron sull'host,
+come descritto sopra.

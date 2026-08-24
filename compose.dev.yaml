@@ -1,7 +1,13 @@
 # Development overrides.
 #
-# This file is applied automatically by `docker compose` and is not used in
-# production, where only `compose.yaml` is passed with `-f`.
+# Deliberately NOT named compose.override.yaml: a file with that name is loaded
+# automatically, so a plain `docker compose up -d` on a server would silently
+# publish MySQL and switch the application to debug logging. Development opts in
+# explicitly:
+#
+#   docker compose -f compose.yaml -f compose.dev.yaml up -d
+#
+# which is what `make up` does.
 services:
   mysql:
     ports:

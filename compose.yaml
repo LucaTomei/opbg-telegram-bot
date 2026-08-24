@@ -110,6 +110,11 @@ services:
   bot:
     <<: [*app-image, *app-defaults]
     command: ["bot"]
+    depends_on:
+      mysql:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "python", "-m", "app.cli", "healthcheck"]
       interval: 30s
@@ -124,6 +129,11 @@ services:
   worker:
     <<: [*app-image, *app-defaults]
     command: ["worker"]
+    depends_on:
+      mysql:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     environment:
       <<: *app-environment
       WORKER_ID: ${WORKER_ID:-}

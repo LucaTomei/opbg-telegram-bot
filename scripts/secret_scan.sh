@@ -18,7 +18,7 @@ report() {
 # Paths that must never contain a secret or a real personal datum.
 SCAN_PATHS=(
   app alembic tests scripts docker docs .github
-  README.md compose.yaml compose.override.yaml Dockerfile
+  README.md compose.yaml compose.dev.yaml Dockerfile
 )
 
 # The scanners necessarily spell out the patterns they hunt for, so they are
