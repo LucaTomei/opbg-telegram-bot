@@ -1,0 +1,42 @@
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+secrets/
+
+# Captures and sensitive exports
+*.har
+captures/
+local-captures/
+*.pdf
+exports/
+backups/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+dist/
+build/
+*.egg-info/
+
+# IDE and OS
+.DS_Store
+.idea/
+.vscode/
+
+# Runtime
+logs/
+tmp/
+data/
+
