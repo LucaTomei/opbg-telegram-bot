@@ -63,7 +63,7 @@ Tutti i comandi sono stati eseguiti il 2026-08-24 sulla revisione corrente.
 | Guardrail su Linux | `make audit-ci` | ✅ scanner eseguiti in un container identico al runner |
 | Audit bottoni | `python scripts/handler_audit.py` | ✅ 103 payload di callback, tutti gestiti |
 | Configurazione senza voci morte | `pytest tests/security/test_ui_completeness.py` | ✅ ogni variabile dichiarata è usata e ogni variabile documentata esiste |
-| CI | `.github/workflows/ci.yml` | ✅ job `changes` (filtro sui file toccati), `guardrails` (secret e placeholder scan), `quality` (formato, lint, tipi, audit bottoni, test con soglia 70%), `image` (build, `compose config` e pubblicazione su GHCR solo da `main` e solo dopo i test); i test live restano deselezionati |
+| CI | `.github/workflows/ci.yml` | ✅ job `guardrails` (secret e placeholder scan più il filtro sui file toccati), `quality` (formato, lint, tipi, audit bottoni, test con soglia 70%), `image` (build, `compose config` e pubblicazione su GHCR solo da `main` e solo dopo i test); i test live restano deselezionati |
 
 ### Copertura sulle parti critiche
 

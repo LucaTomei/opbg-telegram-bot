@@ -6,8 +6,6 @@ on:
   pull_request:
   workflow_dispatch:
 
-# Live portal tests are never enabled here: CI must not touch the real portal.
-
 # A new push on the same ref cancels the run still in flight: there is a single
 # self-hosted runner and a superseded run is wasted time on it.
 concurrency:
@@ -15,13 +13,15 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  changes:
-    name: Cosa è cambiato
-    # Self-hosted runner on the Proxmox node. The workspace survives between
-    # runs, so every job checks out clean and has a timeout: a hung step must
-    # never pin the only runner.
+  guardrails:
+    name: Guardrail e analisi del diff
+    # Self-hosted runner on the Proxmox node. It takes one job at a time, so the
+    # scans and the diff classification share a single checkout instead of
+    # paying for two. The workspace survives between runs, hence the clean
+    # checkout, and every job carries a timeout: a hung step must never pin the
+    # only runner.
     runs-on: [self-hosted, linux, x64, docker]
-    timeout-minutes: 5
+    timeout-minutes: 10
     outputs:
       code: ${{ steps.filter.outputs.code }}
       image: ${{ steps.filter.outputs.image }}
@@ -30,6 +30,14 @@ jobs:
         with:
           fetch-depth: 0
           clean: true
+
+      # Always run: a secret can be committed in any file, documentation
+      # included, and the scans take seconds.
+      - name: Secret scan
+        run: bash scripts/secret_scan.sh
+      - name: Placeholder scan
+        run: bash scripts/placeholder_scan.sh
+
       - name: Classify the changed files
         id: filter
         env:
@@ -67,7 +75,7 @@ jobs:
           # change to CI is always exercised by CI.
           CODE='^(app/|tests/|alembic/|alembic\.ini$|scripts/|pyproject\.toml$|requirements(-dev)?\.lock$|\.github/workflows/)'
           # The image additionally depends on the build and Compose definitions.
-          IMAGE='^(app/|alembic/|alembic\.ini$|scripts/|docker/|Dockerfile$|\.dockerignore$|compose(\.override)?\.yaml$|pyproject\.toml$|requirements\.lock$|\.github/workflows/)'
+          IMAGE='^(app/|alembic/|alembic\.ini$|scripts/|docker/|Dockerfile$|\.dockerignore$|compose(\.dev)?\.yaml$|pyproject\.toml$|requirements\.lock$|\.github/workflows/)'
 
           match() { echo "$CHANGED" | grep -qE "$1" && echo true || echo false; }
           {
@@ -75,26 +83,10 @@ jobs:
             echo "image=$(match "$IMAGE")"
           } >> "$GITHUB_OUTPUT"
 
-  guardrails:
-    name: Segreti e placeholder
-    # Always runs: a secret can be committed in any file, documentation
-    # included, and the scan takes seconds.
-    runs-on: [self-hosted, linux, x64, docker]
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-          clean: true
-      - name: Secret scan
-        run: bash scripts/secret_scan.sh
-      - name: Placeholder scan
-        run: bash scripts/placeholder_scan.sh
-
   quality:
     name: Formato, lint, tipi e test
-    needs: changes
-    if: needs.changes.outputs.code == 'true'
+    needs: guardrails
+    if: needs.guardrails.outputs.code == 'true'
     runs-on: [self-hosted, linux, x64, docker]
     timeout-minutes: 30
     # The job runs inside the official image instead of installing Python on the
@@ -121,12 +113,14 @@ jobs:
         env:
           MYSQL_ROOT_PASSWORD: ci-root-password
           MYSQL_DATABASE: opbg_bot_test
+        # Probed early and often: the job waits for this before its first step,
+        # and MySQL is usually ready well before a lazier schedule notices.
         options: >-
           --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pci-root-password --silent"
-          --health-interval=10s
+          --health-interval=3s
           --health-timeout=5s
-          --health-retries=12
-          --health-start-period=40s
+          --health-retries=30
+          --health-start-period=10s
     steps:
       - uses: actions/checkout@v5
         with:
@@ -137,9 +131,8 @@ jobs:
           key: pip-3.13-${{ hashFiles('requirements-dev.lock') }}
           restore-keys: pip-3.13-
       - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements-dev.lock
+        # The lock file is complete, so resolution is pure overhead.
+        run: pip install --no-deps --requirement requirements-dev.lock
       - name: Formatter
         run: ruff format --check app tests alembic scripts
       - name: Linter
@@ -160,13 +153,13 @@ jobs:
 
   image:
     name: Immagine Docker
-    needs: [changes, quality]
+    needs: [guardrails, quality]
     # Runs when the image content changed, but never publishes an image whose
     # tests failed. `always()` is required because `quality` is skipped when the
     # change does not touch the code.
     if: >-
       always()
-      && needs.changes.outputs.image == 'true'
+      && needs.guardrails.outputs.image == 'true'
       && needs.quality.result != 'failure'
       && needs.quality.result != 'cancelled'
     runs-on: [self-hosted, linux, x64, docker]
@@ -175,7 +168,9 @@ jobs:
       contents: read
       packages: write
     env:
-      REGISTRY_IMAGE: ghcr.io/${{ github.repository_owner }}/opbg-telegram-bot
+      # Lowercase: a registry rejects an image reference that is not, and the
+      # GitHub account is spelled with capitals. Same default as compose.yaml.
+      REGISTRY_IMAGE: ghcr.io/lucatomei/opbg-telegram-bot
     steps:
       - uses: actions/checkout@v5
         with:
@@ -213,10 +208,11 @@ jobs:
           echo "published ${REGISTRY_IMAGE}:latest and :${SHA_TAG}"
 
       - name: Reclaim disk space
-        # The runner keeps everything it builds, so the image produced here and
-        # the layers left behind go away at the end of every run.
+        # The runner keeps everything it builds, so the image produced here goes
+        # away at the end of every run. The build cache is trimmed, not wiped:
+        # the next run reuses it.
         if: always()
         run: |
           docker logout ghcr.io || true
           docker image rm -f opbg-telegram-bot:ci || true
-          docker builder prune --force --keep-storage 2GB || true
+          docker builder prune --force --keep-storage 4GB || true
