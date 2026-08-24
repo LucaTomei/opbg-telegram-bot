@@ -195,7 +195,6 @@ services:
       BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
       BACKUP_PASSPHRASE_FILE: ${BACKUP_PASSPHRASE_FILE:-/run/secrets/backup_passphrase}
       BACKUP_PASSPHRASE: ${BACKUP_PASSPHRASE:-}
-      SCHEMA_VERSION: ${SCHEMA_VERSION:-0001_initial}
     volumes:
       - ./scripts/backup.sh:/opt/backup/backup.sh:ro
       - ./scripts/restore.sh:/opt/backup/restore.sh:ro

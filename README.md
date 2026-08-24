@@ -121,7 +121,7 @@ importanti:
 | --- | --- |
 | `APP_ENCRYPTION_KEY` | Chiave AES-256 per i dati a riposo. **Perderla rende illeggibili credenziali e pazienti.** |
 | `APP_BLIND_INDEX_KEY` | Chiave separata per gli indici di ricerca sui campi cifrati |
-| `APP_SECRET_KEY` | Segreto applicativo generale |
+| `APP_SECRET_KEY` | Pepe applicativo per gli hash di inviti, ticket, link e nonce |
 | `PUBLIC_BASE_URL` | URL HTTPS pubblico usato nei link monouso |
 | `TELEGRAM_BOT_TOKEN` | Token del bot |
 | `TELEGRAM_ADMIN_IDS` | ID Telegram degli amministratori, separati da virgola |
@@ -197,7 +197,8 @@ pianificato; la procedura è descritta nel runbook.
   campo e versione di chiave;
 - gli indici di ricerca sui campi cifrati sono HMAC con chiave separata;
 - inviti, ticket, link di download e nonce di conferma sono salvati solo come
-  hash;
+  hash, con un pepe derivato da `APP_SECRET_KEY`: una copia del database non
+  basta per verificare un codice indovinato;
 - password, cookie, CSRF, token, tax code e HTML del portale non finiscono mai
   nei log: la redazione è centralizzata e testata;
 - ogni azione amministrativa e ogni accesso ai dati completi produce una voce

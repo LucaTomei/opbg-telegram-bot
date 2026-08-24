@@ -14,8 +14,6 @@ DATABASE="${MYSQL_DATABASE:-opbg_bot}"
 HOST="${DATABASE_HOST:-mysql}"
 PORT="${DATABASE_PORT:-3306}"
 TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
-SCHEMA_VERSION="${SCHEMA_VERSION:-unknown}"
-ARTIFACT="${BACKUP_DIR}/opbg-${TIMESTAMP}-${SCHEMA_VERSION}.sql.gz.enc"
 
 # The passphrase may come from a mounted secret file or, for a one-off run,
 # from the environment. It is never written next to the archive.
@@ -34,6 +32,13 @@ umask 077
 # The password travels through MYSQL_PWD instead of the command line, so it
 # never shows up in the process list.
 export MYSQL_PWD="${MYSQL_ROOT_PASSWORD}"
+
+# The archive is named after the revision actually applied, not after a guess.
+SCHEMA_VERSION="$(mysql --host="${HOST}" --port="${PORT}" --user=root --batch --skip-column-names \
+  --execute="SELECT version_num FROM alembic_version LIMIT 1" "${DATABASE}" 2>/dev/null || true)"
+SCHEMA_VERSION="${SCHEMA_VERSION:-unknown}"
+
+ARTIFACT="${BACKUP_DIR}/opbg-${TIMESTAMP}-${SCHEMA_VERSION}.sql.gz.enc"
 
 # The dump is written to a temporary file first: a shell pipeline hides the
 # exit status of its first stage, and an empty archive must never be kept.

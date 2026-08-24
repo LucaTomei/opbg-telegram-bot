@@ -60,10 +60,10 @@ Tutti i comandi sono stati eseguiti il 2026-08-24 sulla revisione corrente.
 | Formatter | `ruff format --check app tests alembic scripts` | ✅ tutti i file già formattati |
 | Linter | `ruff check .` | ✅ nessun rilievo |
 | Type checker | `mypy app tests` | ✅ 144 file, nessun errore (modalità `strict`) |
-| Test unit/contract/security | `pytest tests/unit tests/contract tests/security` | ✅ 316 passati, 5 deselezionati (live) |
-| Test integrazione (MySQL) | `pytest tests/integration` | ✅ 250 passati |
-| Suite completa | `pytest` | ✅ 566 passati, 5 deselezionati |
-| Copertura | `pytest --cov=app` | ✅ 78% complessivo (soglia documentata: 70%) |
+| Test unit/contract/security | `pytest tests/unit tests/contract tests/security` | ✅ 323 passati, 5 deselezionati (live) |
+| Test integrazione (MySQL) | `pytest tests/integration` | ✅ 255 passati |
+| Suite completa | `pytest` | ✅ 578 passati, 5 deselezionati |
+| Copertura | `pytest --cov=app` | ✅ 79% complessivo (soglia documentata: 70%) |
 | Compose config | `docker compose config` | ✅ configurazione valida |
 | Build immagine | `docker compose build` | ✅ `opbg-telegram-bot:1.0.0` |
 | Migrazione da DB vuoto | `docker compose down -v && docker compose run --rm migrate` | ✅ `0001_initial` → `0002_restrict_booking_history` → `0003_clean_internal_columns` |
@@ -75,6 +75,7 @@ Tutti i comandi sono stati eseguiti il 2026-08-24 sulla revisione corrente.
 | Secret scan | `bash scripts/secret_scan.sh` | ✅ pulito |
 | Scan placeholder | `bash scripts/placeholder_scan.sh` | ✅ pulito (nessun `TODO`/`FIXME`/`pass`/`NotImplementedError`) |
 | Audit bottoni | `python scripts/handler_audit.py` | ✅ 104 payload di callback, tutti gestiti |
+| Configurazione senza voci morte | `pytest tests/security/test_ui_completeness.py` | ✅ ogni variabile dichiarata è usata e ogni variabile documentata esiste |
 | CI | `.github/workflows/ci.yml` | ✅ job `guardrails` (secret e placeholder scan), `quality` (formato, lint, tipi, audit bottoni, test con soglia 70%), `image` (build e `compose config`); i test live restano deselezionati |
 
 ### Copertura sulle parti critiche

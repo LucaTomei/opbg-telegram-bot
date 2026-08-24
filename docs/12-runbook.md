@@ -164,6 +164,11 @@ La chiave di blind index (`APP_BLIND_INDEX_KEY`) **non è ruotabile a caldo**:
 cambiarla invalida tutti gli indici di ricerca. Va cambiata solo insieme a una
 ricostruzione degli indici.
 
+Anche `APP_SECRET_KEY` non è ruotabile a caldo: pepa gli hash di inviti,
+ticket di collegamento, link di download e nonce di conferma. Cambiarla
+invalida tutti i token già emessi; gli utenti dovranno richiedere un nuovo
+link o un nuovo invito.
+
 ## Cancellazione di un utente o di un account
 
 L'utente può farlo da solo: **Impostazioni → Privacy → Elimina tutti i miei
