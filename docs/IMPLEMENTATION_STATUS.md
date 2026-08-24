@@ -54,7 +54,7 @@ Tutti i comandi sono stati eseguiti il 2026-08-24 sulla revisione corrente.
 | Migrazione da DB vuoto | `docker compose down -v && docker compose run --rm migrate` | ✅ `→ 0001_initial` |
 | Migrazione reversibile | `alembic upgrade head && alembic downgrade base && alembic upgrade head` | ✅ 25 tabelle create, rimosse e ricreate |
 | Schema allineato ai modelli | `alembic check` | ✅ `No new upgrade operations detected` |
-| Health container | `docker compose ps` + `docker compose exec worker python -m app.cli healthcheck` | ✅ `mysql` e `worker` healthy, healthcheck uscita `0`; `bot` richiede un token Telegram reale (vedi [Verifiche esterne](#verifiche-esterne)) |
+| Health container | `docker compose ps` | ✅ `mysql`, `bot` e `worker` healthy da database vuoto su un host reale, nessuna porta pubblicata |
 | Backup | `docker compose --profile backup run --rm backup` | ✅ archivio `opbg-<timestamp>-<schema>.sql.gz.enc`, esito `SUCCESS` in `backup_status` |
 | Restore | `sh /opt/backup/restore.sh <archivio> opbg_bot_restore_check` | ✅ 26 tabelle ripristinate su un database separato |
 | Spegnimento pulito | `docker compose stop worker` | ✅ `WORKER_STOPPED` con rilascio dei lease |
@@ -113,7 +113,7 @@ critici misurati singolarmente:
 | AC-021 | Il restart conserva conversazioni, lease e idempotenza | `app/bot/storage.py`, `app/db/repositories/watches.py`, `app/worker/scheduler.py` | `tests/integration/test_repositories.py::test_conversation_state_survives_a_restart`, `tests/integration/test_concurrency.py::test_an_expired_lease_is_recovered`, `tests/integration/test_scheduler.py::test_shutdown_releases_the_leases_of_this_worker` | ✅ |
 | AC-022 | MySQL non è esposto in produzione | `compose.yaml` (nessun `ports`), `compose.dev.yaml` (solo sviluppo, mai automatico) | `docker compose config` non pubblica alcuna porta, per nessun servizio | ✅ |
 | AC-023 | Repo e immagini senza HAR, `.env`, segreti o dati reali | `.gitignore`, `.dockerignore`, `scripts/secret_scan.sh` | `bash scripts/secret_scan.sh`, `tests/security/test_no_destructive_live_tests.py` | ✅ |
-| AC-024 | Tutti i servizi Docker diventano healthy da DB vuoto | `Dockerfile`, `compose.yaml`, `app/cli.py` | `docker compose down -v` → `migrate` → `up` → `ps`: `mysql` e `worker` healthy; `bot` richiede un token reale (vedi sotto) | ⚠️ parziale |
+| AC-024 | Tutti i servizi Docker diventano healthy da DB vuoto | `Dockerfile`, `compose.yaml`, `app/cli.py` | `docker compose up -d` da volume vuoto su un container LXC: `mysql` healthy, `migrate` uscito con successo, poi `bot` e `worker` healthy in 20 s | ✅ |
 | AC-025 | Nessun bottone privo di handler o con placeholder | `app/bot/*` | `python scripts/handler_audit.py` (103 payload), `bash scripts/placeholder_scan.sh` | ✅ |
 
 ## Definition of Done
@@ -144,20 +144,9 @@ soddisfatta, con le sole eccezioni dichiarate nella sezione seguente.
 
 ## Verifiche esterne
 
-Due verifiche non sono automatizzabili in questo ambiente perché richiedono
-credenziali reali.
+Una sola verifica resta aperta, perché richiede un appuntamento vero.
 
-1. **Avvio del servizio `bot`.** Il processo rifiuta di partire con un token
-   Telegram non valido: registra `BOT_TOKEN_REJECTED` ed esce, invece di
-   restare in ascolto in uno stato inutilizzabile. Con il token di prova
-   presente nell'ambiente locale il container resta quindi in `Restarting`,
-   mentre `mysql` e `worker` diventano healthy e
-   `python -m app.cli healthcheck` esce con `0`. Con un token reale il
-   servizio parte e supera il proprio health check.
-
-   **Stato: non eseguita in questo ambiente.**
-
-2. **Prenotazione e disdetta reali sul portale.** Tutta la logica è
+1. **Prenotazione e disdetta reali sul portale.** Tutta la logica è
    implementata e testata contro un portale sintetico che riproduce le stesse
    route, gli stessi campi form e gli stessi payload JSON documentati, inclusi
    esito ambiguo, slot perso e sessione scaduta. Nessun test automatico crea o
@@ -170,6 +159,20 @@ credenziali reali.
 
    **Stato: non eseguita.** Annotare qui data, esito e correlation ID quando
    verrà eseguita.
+
+## Deployment di riferimento
+
+Il primo deployment reale gira su un container LXC di Proxmox, con l'immagine
+scaricata dal registry e nessun sorgente sull'host:
+
+- `docker compose pull` seguito da un solo `docker compose up -d` su volume
+  vuoto porta `mysql` healthy, esegue `migrate` fino all'uscita, poi avvia
+  `bot` e `worker`, healthy entrambi entro venti secondi;
+- nessun servizio pubblica porte;
+- il token Telegram è validato all'avvio: `bot` diventa healthy solo se il
+  token è reale, altrimenti registra `BOT_TOKEN_REJECTED` ed esce.
+
+La procedura è in [`docs/12-deploy-proxmox.md`](12-deploy-proxmox.md).
 
 ## Scelte esplicite e limiti noti
 
