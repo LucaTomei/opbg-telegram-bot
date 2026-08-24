@@ -61,8 +61,10 @@ def build_dispatcher(container: Container) -> Dispatcher:
     idempotency = CallbackIdempotencyMiddleware()
 
     for observer in (dispatcher.message, dispatcher.callback_query):
-        observer.outer_middleware(context)
+        # The error boundary wraps the unit of work: a failure must roll the
+        # transaction back before the user is answered.
         observer.outer_middleware(errors)
+        observer.outer_middleware(context)
         observer.outer_middleware(authorization)
     dispatcher.callback_query.outer_middleware(idempotency)
 

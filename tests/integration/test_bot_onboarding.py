@@ -247,3 +247,62 @@ async def test_the_administrator_is_upserted_from_the_environment(
     admins = await bot.container.users.bootstrap_admins(clean_session)
     assert [admin.telegram_id for admin in admins] == [ADMIN_ID]
     assert admins[0].role is UserRole.ADMIN
+
+
+# --- transactional safety -----------------------------------------------------
+async def test_a_failing_handler_rolls_the_update_back(
+    harness: BotHarness, member: TelegramUser, database: Database
+) -> None:
+    """A handler that raises must not leave half of its changes committed."""
+    from aiogram import Router
+    from aiogram.types import CallbackQuery
+
+    from app.db.repositories.users import UserRepository
+
+    probe = Router(name="probe")
+
+    @probe.callback_query(lambda query: (query.data or "") == "nv|noop|explode")
+    async def explode(query: CallbackQuery, session: AsyncSession) -> None:
+        users = UserRepository(session)
+        user = await users.get_by_telegram_id(INVITED_ID)
+        assert user is not None
+        user.timezone = "Europe/Malta"
+        await users.flush()
+        raise RuntimeError("synthetic handler failure")
+
+    harness.dispatcher.include_router(probe)
+    try:
+        await harness.press(INVITED_ID, "nv|noop|explode")
+    finally:
+        harness.dispatcher.sub_routers.remove(probe)
+        probe._parent_router = None
+
+    assert harness.contains("errore tecnico")
+    async with database.read_session() as session:
+        reloaded = await UserRepository(session).get_by_telegram_id(INVITED_ID)
+        assert reloaded is not None
+        assert reloaded.timezone == "Europe/Rome"
+
+
+async def test_the_error_message_carries_a_correlation_id(
+    harness: BotHarness, member: TelegramUser
+) -> None:
+    from aiogram import Router
+    from aiogram.types import CallbackQuery
+
+    probe = Router(name="probe-cid")
+
+    @probe.callback_query(lambda query: (query.data or "") == "nv|noop|boom")
+    async def boom(query: CallbackQuery) -> None:
+        raise RuntimeError("synthetic failure")
+
+    harness.dispatcher.include_router(probe)
+    try:
+        await harness.press(INVITED_ID, "nv|noop|boom")
+    finally:
+        harness.dispatcher.sub_routers.remove(probe)
+        probe._parent_router = None
+
+    message = harness.find("errore tecnico")
+    assert "<code>" in message.text
+    assert "Traceback" not in message.text

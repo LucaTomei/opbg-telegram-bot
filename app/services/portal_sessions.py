@@ -167,8 +167,15 @@ class PortalSessionManager:
         cookies = portal_session.cookies_as_dict()
         if not cookies:
             return
-        account.cookie_jar = cookies
-        await accounts.flush()
+        try:
+            account.cookie_jar = cookies
+            await accounts.flush()
+        except Exception:
+            # Never let the bookkeeping hide the failure that brought us here.
+            logger.warning(
+                "could not persist the refreshed cookie jar",
+                extra={"event_code": "COOKIE_PERSIST_FAILED", "account_id": account.id.hex},
+            )
 
     async def verify_credentials(
         self, credentials: PortalCredentials, *, account_key: str

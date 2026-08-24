@@ -12,13 +12,18 @@ from aiogram.types import CallbackQuery, Message, TelegramObject
 from app.bot import texts
 from app.bot.presenters.errors import describe_error
 from app.domain.errors import DomainError
-from app.logging import get_logger
+from app.logging import correlation_scope, get_logger
 
 logger = get_logger(__name__)
 
 
 class ErrorBoundaryMiddleware(BaseMiddleware):
-    """Catch expected and unexpected errors and answer the user safely."""
+    """Catch expected and unexpected errors and answer the user safely.
+
+    It is registered *outside* the unit of work, so an exception first rolls
+    back the transaction of the update and only then reaches the user: a failed
+    handler can never leave half of its changes committed.
+    """
 
     async def __call__(
         self,
@@ -26,7 +31,17 @@ class ErrorBoundaryMiddleware(BaseMiddleware):
         event: TelegramObject,
         data: dict[str, Any],
     ) -> Any:
-        correlation_id = str(data.get("correlation_id", ""))
+        with correlation_scope() as correlation_id:
+            data["correlation_id"] = correlation_id
+            return await self._guard(handler, event, data, correlation_id)
+
+    async def _guard(
+        self,
+        handler: Callable[[TelegramObject, dict[str, Any]], Awaitable[Any]],
+        event: TelegramObject,
+        data: dict[str, Any],
+        correlation_id: str,
+    ) -> Any:
         try:
             return await handler(event, data)
         except TelegramBadRequest as exc:

@@ -10,13 +10,17 @@ from aiogram.types import TelegramObject
 
 from app.composition import Container
 from app.db.session import bind_session
-from app.logging import correlation_scope, get_logger
+from app.logging import get_correlation_id, get_logger
 
 logger = get_logger(__name__)
 
 
 class ContextMiddleware(BaseMiddleware):
-    """Open one transactional session per update and bind a correlation id."""
+    """Open one transactional session per update.
+
+    The session is committed when the handler returns and rolled back when it
+    raises, so an update is applied all at once or not at all.
+    """
 
     def __init__(self, container: Container) -> None:
         self._container = container
@@ -27,10 +31,9 @@ class ContextMiddleware(BaseMiddleware):
         event: TelegramObject,
         data: dict[str, Any],
     ) -> Any:
-        with correlation_scope() as correlation_id:
-            async with self._container.database.session() as session, bind_session(session):
-                data["container"] = self._container
-                data["settings"] = self._container.settings
-                data["session"] = session
-                data["correlation_id"] = correlation_id
-                return await handler(event, data)
+        async with self._container.database.session() as session, bind_session(session):
+            data["container"] = self._container
+            data["settings"] = self._container.settings
+            data["session"] = session
+            data.setdefault("correlation_id", get_correlation_id() or "")
+            return await handler(event, data)
