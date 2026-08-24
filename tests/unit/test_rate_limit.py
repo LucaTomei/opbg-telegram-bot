@@ -111,4 +111,4 @@ async def test_concurrency_is_capped() -> None:
 
 async def test_null_gate_never_blocks() -> None:
     gate = NullPortalGate()
-    assert await gate.acquire(operation="test", account_key=None) is None
+    await gate.acquire(operation="test", account_key=None)

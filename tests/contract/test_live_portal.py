@@ -1,0 +1,113 @@
+"""Opt-in, non-destructive checks against the real portal.
+
+These tests are skipped unless ``OPBG_LIVE_TESTS=1`` and real credentials are
+provided in the environment.  They never create or cancel an appointment, and
+they are disabled in continuous integration by default.
+
+    OPBG_LIVE_TESTS=1 \
+    OPBG_LIVE_EMAIL=... OPBG_LIVE_PASSWORD=... \
+    .venv/bin/python -m pytest tests/contract/test_live_portal.py -m live
+
+Booking and cancellation against the real portal are deliberately not
+automated: see ``docs/IMPLEMENTATION_STATUS.md`` for the manual runbook.
+"""
+
+from __future__ import annotations
+
+import os
+
+import pytest
+
+from app.config import Settings
+from app.portal.client import PortalClient
+from app.portal.models import PortalCredentials
+from app.portal.rate_limit import AsyncRateLimiter, RateLimitPolicy
+
+pytestmark = pytest.mark.live
+
+LIVE_ENABLED = os.environ.get("OPBG_LIVE_TESTS") == "1"
+LIVE_EMAIL = os.environ.get("OPBG_LIVE_EMAIL", "")
+LIVE_PASSWORD = os.environ.get("OPBG_LIVE_PASSWORD", "")
+LIVE_QUERY = os.environ.get("OPBG_LIVE_QUERY", "visita")
+
+requires_live = pytest.mark.skipif(
+    not (LIVE_ENABLED and LIVE_EMAIL and LIVE_PASSWORD),
+    reason="live portal tests are opt-in; set OPBG_LIVE_TESTS=1 and the credentials",
+)
+
+
+def live_client(settings: Settings) -> PortalClient:
+    limiter = AsyncRateLimiter(
+        RateLimitPolicy(
+            max_concurrency=1,
+            min_interval_seconds=2.0,
+            per_account_min_interval_seconds=2.0,
+        )
+    )
+    return PortalClient(settings, limiter=limiter)
+
+
+@requires_live
+async def test_login_and_session_verification(settings: Settings) -> None:
+    client = live_client(settings)
+    async with client.session(account_key="live") as session:
+        result = await client.login(session, PortalCredentials(LIVE_EMAIL, LIVE_PASSWORD))
+        assert result.verified is True
+        assert await client.verify_session(session) is True
+
+
+@requires_live
+async def test_patients_and_autocomplete_are_readable(settings: Settings) -> None:
+    client = live_client(settings)
+    async with client.session(account_key="live") as session:
+        await client.login(session, PortalCredentials(LIVE_EMAIL, LIVE_PASSWORD))
+        patients = await client.open_lapi_wizard(session)
+        assert patients, "the account exposes no patient"
+        tax_code = patients[0].tax_code
+        services = await client.autocomplete_services(session, query=LIVE_QUERY, tax_code=tax_code)
+        assert isinstance(services, tuple)
+
+
+@requires_live
+async def test_availability_is_readable(settings: Settings) -> None:
+    client = live_client(settings)
+    async with client.session(account_key="live") as session:
+        await client.login(session, PortalCredentials(LIVE_EMAIL, LIVE_PASSWORD))
+        patients = await client.open_lapi_wizard(session)
+        await client.select_patient(session, patients[0].tax_code)
+        services = await client.autocomplete_services(
+            session, query=LIVE_QUERY, tax_code=patients[0].tax_code
+        )
+        if not services:
+            pytest.skip("the live query returned no service")
+        _, locations = await client.submit_service_choice(session, services[0])
+        availability = await client.fetch_availability(
+            session,
+            service_id=services[0].service_id,
+            location_ids=[item.location_id for item in locations],
+        )
+        assert availability is not None
+
+
+@requires_live
+async def test_appointment_list_is_readable(settings: Settings) -> None:
+    client = live_client(settings)
+    async with client.session(account_key="live") as session:
+        await client.login(session, PortalCredentials(LIVE_EMAIL, LIVE_PASSWORD))
+        appointments = await client.list_appointments(session)
+        assert isinstance(appointments, tuple)
+
+
+@requires_live
+async def test_pdf_of_an_explicitly_selected_appointment(settings: Settings) -> None:
+    """Downloads the reminder of the appointment named in the environment."""
+    appointment_id = os.environ.get("OPBG_LIVE_APPOINTMENT_ID", "")
+    if not appointment_id:
+        pytest.skip("set OPBG_LIVE_APPOINTMENT_ID to exercise the PDF download")
+    client = live_client(settings)
+    async with client.session(account_key="live") as session:
+        await client.login(session, PortalCredentials(LIVE_EMAIL, LIVE_PASSWORD))
+        document = await client.download_pdf(
+            session, appointment_id=appointment_id, max_bytes=settings.pdf_max_bytes
+        )
+        assert document.content.startswith(b"%PDF-")

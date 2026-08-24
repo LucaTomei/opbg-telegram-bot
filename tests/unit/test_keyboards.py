@@ -33,9 +33,7 @@ def test_main_keyboard_is_persistent_and_complete() -> None:
 
 
 def test_admin_entry_is_added_only_for_administrators() -> None:
-    labels = {
-        button.text for row in main_keyboard(is_admin=True).keyboard for button in row
-    }
+    labels = {button.text for row in main_keyboard(is_admin=True).keyboard for button in row}
     assert texts.BTN_ADMIN in labels
 
 

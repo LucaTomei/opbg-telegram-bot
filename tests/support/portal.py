@@ -12,6 +12,7 @@ from typing import Any
 
 import httpx
 
+from app.composition import Container, build_breaker_policy
 from app.config import Settings
 from app.db.session import Database
 from app.portal.circuit_breaker import CircuitBreakerService
@@ -27,7 +28,6 @@ from app.services.portal_sessions import PortalSessionManager
 from app.services.search import SearchService
 from app.services.users import InviteService, UserService
 from app.services.watches import WatchService
-from app.composition import Container, build_breaker_policy
 from tests.fixtures.synthetic import load
 
 PDF_BYTES = b"%PDF-1.7\n promemoria sintetico \n%%EOF"
@@ -36,9 +36,7 @@ VALID_PASSWORD = "password-sintetica-di-test"
 
 
 def _html(body: str, status: int = 200) -> httpx.Response:
-    return httpx.Response(
-        status, text=body, headers={"content-type": "text/html; charset=utf-8"}
-    )
+    return httpx.Response(status, text=body, headers={"content-type": "text/html; charset=utf-8"})
 
 
 def _json(name: str) -> httpx.Response:
@@ -198,9 +196,7 @@ async def _no_sleep(_seconds: float) -> None:
     return None
 
 
-def build_container(
-    settings: Settings, database: Database, portal: FakePortal
-) -> Container:
+def build_container(settings: Settings, database: Database, portal: FakePortal) -> Container:
     """Build a container whose portal adapter talks to the fake portal."""
     limiter = AsyncRateLimiter(
         RateLimitPolicy(

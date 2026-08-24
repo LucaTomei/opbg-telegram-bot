@@ -8,9 +8,9 @@ import pytest
 
 from app.bot import callbacks
 from app.bot.callbacks import (
+    MAX_CALLBACK_BYTES,
     CallbackTooLongError,
     InvalidCallbackError,
-    MAX_CALLBACK_BYTES,
     build,
     pack_uuid,
     parse,

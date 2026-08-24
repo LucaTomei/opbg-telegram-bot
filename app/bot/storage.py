@@ -23,6 +23,11 @@ from app.db.session import Database, current_session
 PAYLOAD_KEY = "data"
 
 
+def _has_payload(payload: Any) -> bool:
+    """Return ``True`` when the stored payload carries conversation data."""
+    return bool(isinstance(payload, dict) and payload.get(PAYLOAD_KEY))
+
+
 class MySQLStorage(BaseStorage):
     """Persist aiogram FSM state and data in MySQL, encrypted at rest."""
 
@@ -56,15 +61,26 @@ class MySQLStorage(BaseStorage):
             if user_id is None:
                 return
             repository = ConversationStateRepository(session)
-            if resolved is None:
-                await repository.clear(user_id)
-                return
             current = await repository.get_for_user(user_id)
-            payload = current.payload if current is not None else None
+            if resolved is None:
+                # Clearing the state must not discard the data: aiogram keeps
+                # the two independent and clears them with separate calls.
+                if current is None:
+                    return
+                if not _has_payload(current.payload):
+                    await repository.clear(user_id)
+                    return
+                await repository.set_state(
+                    user_id,
+                    state="",
+                    payload=current.payload,
+                    ttl_seconds=self._settings.conversation_state_ttl_seconds,
+                )
+                return
             await repository.set_state(
                 user_id,
                 state=str(resolved)[:64],
-                payload=payload,
+                payload=current.payload if current is not None else None,
                 ttl_seconds=self._settings.conversation_state_ttl_seconds,
             )
 
@@ -74,7 +90,7 @@ class MySQLStorage(BaseStorage):
             if user_id is None:
                 return None
             record = await ConversationStateRepository(session).get_for_user(user_id)
-            return None if record is None else record.state
+            return record.state or None if record is not None else None
 
     async def set_data(self, key: StorageKey, data: Mapping[str, Any]) -> None:
         async with self._session() as session:
@@ -83,10 +99,20 @@ class MySQLStorage(BaseStorage):
                 return
             repository = ConversationStateRepository(session)
             current = await repository.get_for_user(user_id)
-            if current is None and not data:
-                # ``FSMContext.clear()`` calls ``set_state(None)`` and then
-                # ``set_data({})``; recreating the row here would resurrect the
-                # state that was just deleted.
+            if not data:
+                # ``FSMContext.clear()`` clears the state and then the data;
+                # once both are empty the row has no reason to exist.
+                if current is None:
+                    return
+                if not current.state:
+                    await repository.clear(user_id)
+                    return
+                await repository.set_state(
+                    user_id,
+                    state=current.state,
+                    payload=None,
+                    ttl_seconds=self._settings.conversation_state_ttl_seconds,
+                )
                 return
             await repository.set_state(
                 user_id,

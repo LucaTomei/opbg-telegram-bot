@@ -101,9 +101,7 @@ def test_resolve_period_returns_the_expected_bounds() -> None:
     assert lower == date(2026, 9, 1)
     assert upper == date(2026, 10, 1)
     lower, upper = resolve_period(
-        base_filter(
-            date_mode=DateMode.FIXED, date_from=date(2026, 1, 1), date_to=date(2026, 2, 1)
-        ),
+        base_filter(date_mode=DateMode.FIXED, date_from=date(2026, 1, 1), date_to=date(2026, 2, 1)),
         today=date(2026, 9, 1),
     )
     assert (lower, upper) == (date(2026, 1, 1), date(2026, 2, 1))
@@ -136,9 +134,7 @@ def test_excluded_dates_are_removed() -> None:
         slot(date(2026, 9, 10), time(9, 0), code="keep"),
         slot(date(2026, 9, 11), time(9, 0), code="drop"),
     ]
-    kept = apply_filter(
-        slots, base_filter(excluded_dates=frozenset({date(2026, 9, 11)})), now=NOW
-    )
+    kept = apply_filter(slots, base_filter(excluded_dates=frozenset({date(2026, 9, 11)})), now=NOW)
     assert {item.proposal_code for item in kept} == {"keep"}
 
 
@@ -259,9 +255,7 @@ def test_earliest_ordering_ignores_location_preference() -> None:
     ]
     kept = apply_filter(
         slots,
-        base_filter(
-            sort_strategy=SortStrategy.EARLIEST, preferred_location_ids=("101", "202")
-        ),
+        base_filter(sort_strategy=SortStrategy.EARLIEST, preferred_location_ids=("101", "202")),
         now=NOW,
     )
     assert [item.proposal_code for item in kept] == ["beta", "alfa"]
@@ -294,9 +288,7 @@ def test_a_service_search_keeps_only_the_selected_service() -> None:
 
 # --- limits and deduplication ------------------------------------------------
 def test_result_limit_is_applied_after_ordering() -> None:
-    slots = [
-        slot(date(2026, 9, 10 + index), time(9, 0), code=f"p{index}") for index in range(10)
-    ]
+    slots = [slot(date(2026, 9, 10 + index), time(9, 0), code=f"p{index}") for index in range(10)]
     kept = apply_filter(slots, base_filter(max_results=3), now=NOW)
     assert [item.proposal_code for item in kept] == ["p0", "p1", "p2"]
 

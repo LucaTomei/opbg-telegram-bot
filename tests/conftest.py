@@ -11,8 +11,8 @@ import base64
 import os
 import uuid
 from collections.abc import AsyncIterator, Iterator
-from typing import TYPE_CHECKING
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
@@ -64,10 +64,8 @@ def _test_settings_env() -> dict[str, str]:
 @pytest.fixture(scope="session")
 def settings() -> Settings:
     """Validated settings built from a deterministic test environment."""
-    return Settings(
-        _env_file=None,
-        **{key.lower(): value for key, value in _test_settings_env().items()},
-    )
+    values: dict[str, Any] = {key.lower(): value for key, value in _test_settings_env().items()}
+    return Settings(_env_file=None, **values)
 
 
 @pytest.fixture(autouse=True)
@@ -172,7 +170,7 @@ def uuid_factory() -> type[uuid.UUID]:
 
 
 @pytest.fixture
-def portal() -> "FakePortal":
+def portal() -> FakePortal:
     """A deterministic synthetic portal shared by the service level tests."""
     from tests.support.portal import FakePortal
 
@@ -180,7 +178,7 @@ def portal() -> "FakePortal":
 
 
 @pytest.fixture
-def container(settings: Settings, database: Database, portal: "FakePortal") -> "Container":
+def container(settings: Settings, database: Database, portal: FakePortal) -> Container:
     """A fully wired container whose portal adapter talks to the fake portal."""
     from tests.support.portal import build_container
 
@@ -188,7 +186,7 @@ def container(settings: Settings, database: Database, portal: "FakePortal") -> "
 
 
 @pytest.fixture(scope="session")
-def bot_portal() -> "FakePortal":
+def bot_portal() -> FakePortal:
     """A fake portal shared by the bot harness for the whole session."""
     from tests.support.portal import FakePortal
 
@@ -196,16 +194,14 @@ def bot_portal() -> "FakePortal":
 
 
 @pytest.fixture(scope="session")
-def bot_container(
-    settings: Settings, engine: AsyncEngine, bot_portal: "FakePortal"
-) -> "Container":
+def bot_container(settings: Settings, engine: AsyncEngine, bot_portal: FakePortal) -> Container:
     from tests.support.portal import build_container
 
     return build_container(settings, Database(settings, engine=engine), bot_portal)
 
 
 @pytest.fixture(scope="session")
-async def bot_harness(bot_container: "Container") -> AsyncIterator["BotHarness"]:
+async def bot_harness(bot_container: Container) -> AsyncIterator[BotHarness]:
     """One dispatcher per session: aiogram routers can only be attached once."""
     from tests.support.bot import BotHarness
 
@@ -216,8 +212,8 @@ async def bot_harness(bot_container: "Container") -> AsyncIterator["BotHarness"]
 
 @pytest.fixture
 async def bot(
-    bot_harness: "BotHarness", bot_portal: "FakePortal", clean_session: AsyncSession
-) -> "BotHarness":
+    bot_harness: BotHarness, bot_portal: FakePortal, clean_session: AsyncSession
+) -> BotHarness:
     """A clean harness: empty database, reset portal and no recorded call."""
     await clean_session.commit()
     bot_harness.reset()

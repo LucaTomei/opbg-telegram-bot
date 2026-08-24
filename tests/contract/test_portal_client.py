@@ -18,7 +18,6 @@ from app.domain.errors import (
     PortalContractChanged,
     PortalRateLimited,
     PortalUnavailable,
-    ReauthenticationRequired,
 )
 from app.portal.client import PortalClient, PortalSession
 from app.portal.models import PortalCredentials
@@ -123,9 +122,7 @@ def default_handler(request: httpx.Request) -> httpx.Response:
     if path == "/appointments/disponibilita":
         return json_response("availability.json")
     if path.endswith("/pdf-download"):
-        return httpx.Response(
-            200, content=PDF_BYTES, headers={"content-type": "application/pdf"}
-        )
+        return httpx.Response(200, content=PDF_BYTES, headers={"content-type": "application/pdf"})
     if path.endswith("/cancel"):
         return httpx.Response(302, headers={"location": "/appointments"})
     if path == "/appointments/history":
@@ -134,7 +131,7 @@ def default_handler(request: httpx.Request) -> httpx.Response:
 
 
 @pytest.fixture
-async def session_factory(settings: Settings):
+async def session_factory(settings: Settings) -> Any:
     async def factory(
         handler: Callable[[httpx.Request], httpx.Response] = default_handler,
         recorder: Recorder | None = None,
@@ -172,9 +169,7 @@ async def test_login_copies_the_hidden_fields_of_the_form(settings: Settings) ->
     recorder = Recorder()
     client = build_client(settings, default_handler, recorder=recorder)
     async with client.session(account_key="a") as portal_session:
-        await client.login(
-            portal_session, PortalCredentials(SYNTHETIC_EMAIL, SYNTHETIC_PASSWORD)
-        )
+        await client.login(portal_session, PortalCredentials(SYNTHETIC_EMAIL, SYNTHETIC_PASSWORD))
     login_post = next(
         request
         for request in recorder.requests
@@ -218,7 +213,7 @@ async def test_captcha_challenge_stops_the_flow(settings: Settings) -> None:
 
 
 async def test_unauthenticated_status_requires_reauthentication(settings: Settings) -> None:
-    client = build_client(settings, lambda request: httpx.Response(401, text="no"))
+    client = build_client(settings, lambda _request: httpx.Response(401, text="no"))
     async with client.session(account_key="a") as portal_session:
         assert await client.verify_session(portal_session) is False
 
@@ -245,7 +240,7 @@ async def test_server_errors_are_retried_for_idempotent_reads(settings: Settings
 async def test_repeated_server_errors_surface_as_portal_unavailable(
     settings: Settings,
 ) -> None:
-    client = build_client(settings, lambda request: httpx.Response(502, text="bad gateway"))
+    client = build_client(settings, lambda _request: httpx.Response(502, text="bad gateway"))
     async with client.session(account_key="a") as portal_session:
         with pytest.raises(PortalUnavailable):
             await client.list_appointments(portal_session)
@@ -254,7 +249,7 @@ async def test_repeated_server_errors_surface_as_portal_unavailable(
 async def test_rate_limited_response_is_typed(settings: Settings) -> None:
     client = build_client(
         settings,
-        lambda request: httpx.Response(429, text="slow down", headers={"Retry-After": "1"}),
+        lambda _request: httpx.Response(429, text="slow down", headers={"Retry-After": "1"}),
     )
     async with client.session(account_key="a") as portal_session:
         with pytest.raises(PortalRateLimited):
@@ -272,7 +267,7 @@ async def test_network_failures_map_to_portal_unavailable(settings: Settings) ->
 
 
 async def test_missing_route_is_reported_as_a_contract_change(settings: Settings) -> None:
-    client = build_client(settings, lambda request: httpx.Response(404, text="gone"))
+    client = build_client(settings, lambda _request: httpx.Response(404, text="gone"))
     async with client.session(account_key="a") as portal_session:
         with pytest.raises(PortalContractChanged):
             await client.list_appointments(portal_session)
@@ -381,7 +376,8 @@ async def test_availability_falls_back_to_the_rendered_page(settings: Settings) 
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/appointments/disponibilita":
             return httpx.Response(
-                200, content=b"<html><body>non json</body></html>",
+                200,
+                content=b"<html><body>non json</body></html>",
                 headers={"content-type": "application/json"},
             )
         return default_handler(request)
@@ -436,9 +432,7 @@ async def test_pdf_with_the_wrong_content_type_is_rejected(settings: Settings) -
     client = build_client(settings, handler)
     async with client.session(account_key="a") as portal_session:
         with pytest.raises(PdfUnavailable):
-            await client.download_pdf(
-                portal_session, appointment_id="70001", max_bytes=1_000_000
-            )
+            await client.download_pdf(portal_session, appointment_id="70001", max_bytes=1_000_000)
 
 
 async def test_pdf_without_magic_bytes_is_rejected(settings: Settings) -> None:
@@ -450,9 +444,7 @@ async def test_pdf_without_magic_bytes_is_rejected(settings: Settings) -> None:
     client = build_client(settings, handler)
     async with client.session(account_key="a") as portal_session:
         with pytest.raises(PdfUnavailable):
-            await client.download_pdf(
-                portal_session, appointment_id="70001", max_bytes=1_000_000
-            )
+            await client.download_pdf(portal_session, appointment_id="70001", max_bytes=1_000_000)
 
 
 async def test_pdf_over_the_size_limit_is_rejected(settings: Settings) -> None:
@@ -482,10 +474,12 @@ async def test_pdf_filename_is_sanitised(settings: Settings) -> None:
 # --- session isolation -------------------------------------------------------
 async def test_cookies_are_not_shared_between_sessions(settings: Settings) -> None:
     client = build_client(settings, default_handler)
-    async with client.session(account_key="a", cookies={"opbg-prenotazione": "first"}) as first:
-        async with client.session(account_key="b") as second:
-            assert first.cookies_as_dict() == {"opbg-prenotazione": "first"}
-            assert second.cookies_as_dict() == {}
+    async with (
+        client.session(account_key="a", cookies={"opbg-prenotazione": "first"}) as first,
+        client.session(account_key="b") as second,
+    ):
+        assert first.cookies_as_dict() == {"opbg-prenotazione": "first"}
+        assert second.cookies_as_dict() == {}
 
 
 async def test_contract_change_on_json_endpoint_is_typed(settings: Settings) -> None:

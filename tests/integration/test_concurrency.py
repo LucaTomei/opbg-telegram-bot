@@ -15,7 +15,7 @@ from app.db.repositories.audit import AuditLogImmutableError, AuditRepository
 from app.db.repositories.base import utc_now
 from app.db.repositories.watches import WatchRepository
 from app.db.session import create_session_factory, named_lock
-from app.domain.enums import AuditAction, WatchStatus
+from app.domain.enums import AuditAction
 from app.domain.errors import LockUnavailableError, OptimisticLockError
 from app.services.locks import account_lock, account_lock_name
 from tests.support.factories import make_account, make_watch
@@ -118,12 +118,10 @@ async def test_account_lock_is_exclusive(
     await clean_session.commit()
     factory = create_session_factory(engine)
 
-    async with factory() as holder:
-        async with account_lock(holder, account.id):
-            async with factory() as competitor:
-                with pytest.raises(LockUnavailableError):
-                    async with account_lock(competitor, account.id):
-                        pass
+    async with factory() as holder, account_lock(holder, account.id), factory() as competitor:
+        with pytest.raises(LockUnavailableError):
+            async with account_lock(competitor, account.id):
+                pass
 
 
 async def test_the_lock_is_released_after_the_block(
@@ -132,12 +130,10 @@ async def test_the_lock_is_released_after_the_block(
     account = await make_account(clean_session, user)
     await clean_session.commit()
     factory = create_session_factory(engine)
-    async with factory() as first:
-        async with account_lock(first, account.id):
-            pass
-    async with factory() as second:
-        async with account_lock(second, account.id):
-            pass
+    async with factory() as first, account_lock(first, account.id):
+        pass
+    async with factory() as second, account_lock(second, account.id):
+        pass
 
 
 async def test_lock_names_are_stable_and_short(
@@ -153,12 +149,14 @@ async def test_named_lock_timeout_is_reported(
     clean_session: AsyncSession, engine: AsyncEngine
 ) -> None:
     factory = create_session_factory(engine)
-    async with factory() as holder:
-        async with named_lock(holder, "opbg_test_lock"):
-            async with factory() as competitor:
-                with pytest.raises(LockUnavailableError):
-                    async with named_lock(competitor, "opbg_test_lock", timeout_seconds=0):
-                        pass
+    async with (
+        factory() as holder,
+        named_lock(holder, "opbg_test_lock"),
+        factory() as competitor,
+    ):
+        with pytest.raises(LockUnavailableError):
+            async with named_lock(competitor, "opbg_test_lock", timeout_seconds=0):
+                pass
 
 
 async def test_optimistic_locking_detects_a_concurrent_update(
@@ -247,9 +245,7 @@ async def test_audit_entries_are_listed_with_filters(
         reason="motivo due",
         correlation_id="cid-2",
     )
-    by_action = await audit.list_entries(
-        page=0, page_size=10, action=AuditAction.REVEAL_PII
-    )
+    by_action = await audit.list_entries(page=0, page_size=10, action=AuditAction.REVEAL_PII)
     assert by_action.total == 1
     by_correlation = await audit.list_entries(page=0, page_size=10, correlation_id="cid-2")
     assert by_correlation.total == 1

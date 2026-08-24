@@ -6,10 +6,11 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.composition import Container
+from app.db.models.accounts import Patient, PortalAccount
 from app.db.models.users import TelegramUser
 from app.db.repositories.base import utc_now
 from app.db.repositories.bookings import AppointmentRepository, BookingAttemptRepository
-from app.domain.entities import SearchSelection, SlotFilter
+from app.domain.entities import PortalSlot, SearchSelection, SlotFilter
 from app.domain.enums import (
     AppointmentStatus,
     BookingAttemptStatus,
@@ -35,15 +36,15 @@ FILTER = SlotFilter(
 )
 
 
-async def prepare(session: AsyncSession, user: TelegramUser):
+async def prepare(session: AsyncSession, user: TelegramUser) -> tuple[PortalAccount, Patient]:
     account = await make_account(session, user)
     patient = await make_patient(session, account)
     return account, patient
 
 
 async def collect_slots(
-    session: AsyncSession, container: Container, account, patient
-):
+    session: AsyncSession, container: Container, account: PortalAccount, patient: Patient
+) -> tuple[PortalSlot, ...]:
     result = await container.search.collect(
         session, account, patient, SELECTION, FILTER, now=utc_now()
     )
@@ -272,9 +273,7 @@ async def test_appointments_are_synchronised(
     account, _ = await prepare(clean_session, user)
     result = await container.appointments.sync_account(clean_session, account)
     assert result.created == 2
-    page = await container.appointments.list_for_user(
-        clean_session, user, page=0, page_size=10
-    )
+    page = await container.appointments.list_for_user(clean_session, user, page=0, page_size=10)
     assert page.total == 2
 
 
@@ -305,9 +304,7 @@ async def test_cancellation_is_verified_on_the_portal(
     target.patient_id = patient.id
     await appointments.flush()
 
-    outcome = await container.appointments.cancel(
-        clean_session, user=user, appointment=target
-    )
+    outcome = await container.appointments.cancel(clean_session, user=user, appointment=target)
     assert outcome.succeeded is True
     assert target.status is AppointmentStatus.CANCELLED
     assert portal.cancel_calls == 1
@@ -328,9 +325,7 @@ async def test_ambiguous_cancellation_is_not_retried(
     await appointments.flush()
     portal.cancellation_is_ambiguous = True
 
-    outcome = await container.appointments.cancel(
-        clean_session, user=user, appointment=target
-    )
+    outcome = await container.appointments.cancel(clean_session, user=user, appointment=target)
     assert outcome.ambiguous is True
     assert target.status is AppointmentStatus.PENDING
     assert portal.cancel_calls == 1

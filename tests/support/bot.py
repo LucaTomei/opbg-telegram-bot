@@ -8,7 +8,7 @@ exactly as in production; only the network session is replaced.
 from __future__ import annotations
 
 import itertools
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
@@ -64,9 +64,7 @@ class SentMessage:
             for button in row:
                 if label_fragment in (button.text or "") and button.callback_data:
                     return button.callback_data
-        raise AssertionError(
-            f"no button matching {label_fragment!r}; available: {self.buttons()}"
-        )
+        raise AssertionError(f"no button matching {label_fragment!r}; available: {self.buttons()}")
 
 
 class FakeSession(BaseSession):
@@ -87,7 +85,7 @@ class FakeSession(BaseSession):
         timeout: int = 30,
         chunk_size: int = 65536,
         raise_for_status: bool = True,
-    ) -> AsyncIterator[bytes]:  # pragma: no cover - not used by the bot
+    ) -> AsyncGenerator[bytes]:  # pragma: no cover - not used by the bot
         yield b""
 
     async def make_request(
@@ -100,9 +98,7 @@ class FakeSession(BaseSession):
         if markup is None and isinstance(keyboard, dict) and "inline_keyboard" in keyboard:
             markup = InlineKeyboardMarkup.model_validate(keyboard)
         text = str(payload.get("text") or payload.get("caption") or "")
-        self.calls.append(
-            SentMessage(method=name, text=text, keyboard=markup, payload=payload)
-        )
+        self.calls.append(SentMessage(method=name, text=text, keyboard=markup, payload=payload))
 
         if name in {"SendMessage", "EditMessageText", "SendDocument"}:
             return Message(
@@ -171,7 +167,7 @@ class BotHarness:
         update = Update(
             update_id=next(self._update_ids),
             message=Message(
-                message_id=next(self.session._message_ids),  # noqa: SLF001
+                message_id=next(self.session._message_ids),
                 date=datetime.now(UTC),
                 chat=Chat(id=telegram_id, type="private"),
                 from_user=self._user(telegram_id),
@@ -193,7 +189,7 @@ class BotHarness:
                 chat_instance="synthetic",
                 data=callback_data,
                 message=Message(
-                    message_id=next(self.session._message_ids),  # noqa: SLF001
+                    message_id=next(self.session._message_ids),
                     date=datetime.now(UTC),
                     chat=Chat(id=telegram_id, type="private"),
                     from_user=User(id=BOT_ID, is_bot=True, first_name="bot"),

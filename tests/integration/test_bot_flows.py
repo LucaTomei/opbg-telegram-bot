@@ -6,15 +6,14 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot import callbacks, texts
+from app.db.models.accounts import Patient, PortalAccount
 from app.db.models.users import TelegramUser
 from app.db.repositories.base import utc_now
-from app.db.repositories.bookings import AppointmentRepository, BookingAttemptRepository
 from app.db.repositories.conversations import BookingDraftRepository
 from app.db.repositories.users import UserRepository
 from app.db.repositories.watches import WatchRepository
+from app.db.session import Database
 from app.domain.enums import (
-    AppointmentStatus,
-    BookingAttemptStatus,
     WatchMode,
     WatchStatus,
 )
@@ -36,7 +35,9 @@ async def member(clean_session: AsyncSession, bot: BotHarness) -> TelegramUser:
 
 
 @pytest.fixture
-async def linked(clean_session: AsyncSession, member: TelegramUser):
+async def linked(
+    clean_session: AsyncSession, member: TelegramUser
+) -> tuple[PortalAccount, Patient]:
     account = await make_account(clean_session, member)
     patient = await make_patient(clean_session, account)
     await clean_session.commit()
@@ -62,7 +63,7 @@ async def test_the_account_screen_offers_the_secure_connection_link(
 
 
 async def test_the_account_detail_never_shows_a_secret(
-    bot: BotHarness, linked, member: TelegramUser
+    bot: BotHarness, linked: tuple[PortalAccount, Patient], member: TelegramUser
 ) -> None:
     account, _ = linked
     await bot.press(USER_ID, callbacks.build(callbacks.ACCOUNT, "open", account.id))
@@ -73,7 +74,7 @@ async def test_the_account_detail_never_shows_a_secret(
 
 
 async def test_patients_are_listed_with_masked_names(
-    bot: BotHarness, linked, member: TelegramUser
+    bot: BotHarness, linked: tuple[PortalAccount, Patient], member: TelegramUser
 ) -> None:
     account, _ = linked
     await bot.press(USER_ID, callbacks.build(callbacks.ACCOUNT, "pat", account.id, 0))
@@ -83,7 +84,7 @@ async def test_patients_are_listed_with_masked_names(
 
 
 async def test_account_sync_updates_the_patients(
-    bot: BotHarness, linked, member: TelegramUser
+    bot: BotHarness, linked: tuple[PortalAccount, Patient], member: TelegramUser
 ) -> None:
     account, _ = linked
     await bot.press(USER_ID, callbacks.build(callbacks.ACCOUNT, "sync", account.id))
@@ -91,7 +92,7 @@ async def test_account_sync_updates_the_patients(
 
 
 async def test_account_removal_requires_a_double_confirmation(
-    bot: BotHarness, linked, member: TelegramUser, database
+    bot: BotHarness, linked: tuple[PortalAccount, Patient], member: TelegramUser, database: Database
 ) -> None:
     account, _ = linked
     await bot.press(USER_ID, callbacks.build(callbacks.ACCOUNT, "remove", account.id))
@@ -105,7 +106,7 @@ async def test_account_removal_requires_a_double_confirmation(
 
 
 async def test_a_replayed_removal_callback_is_ignored(
-    bot: BotHarness, linked, member: TelegramUser
+    bot: BotHarness, linked: tuple[PortalAccount, Patient], member: TelegramUser
 ) -> None:
     account, _ = linked
     await bot.press(USER_ID, callbacks.build(callbacks.ACCOUNT, "remove", account.id))
@@ -116,7 +117,10 @@ async def test_a_replayed_removal_callback_is_ignored(
 
 
 async def test_a_user_cannot_open_another_users_account(
-    bot: BotHarness, clean_session: AsyncSession, linked, member: TelegramUser
+    bot: BotHarness,
+    clean_session: AsyncSession,
+    linked: tuple[PortalAccount, Patient],
+    member: TelegramUser,
 ) -> None:
     account, _ = linked
     intruder = await UserRepository(clean_session).create(telegram_id=710099)
@@ -131,7 +135,7 @@ async def test_a_user_cannot_open_another_users_account(
 
 
 # --- booking -----------------------------------------------------------------
-async def start_booking(bot: BotHarness, account, patient) -> str:
+async def start_booking(bot: BotHarness, account: PortalAccount, patient: Patient) -> str:
     await bot.send(USER_ID, texts.BTN_BOOK)
     accounts_screen = bot.find("Scegli l'account")
     await bot.press(USER_ID, accounts_screen.callback_for(account.label))
@@ -142,7 +146,7 @@ async def start_booking(bot: BotHarness, account, patient) -> str:
 
 
 async def test_the_booking_wizard_reaches_the_slot_list(
-    bot: BotHarness, linked, member: TelegramUser
+    bot: BotHarness, linked: tuple[PortalAccount, Patient], member: TelegramUser
 ) -> None:
     account, patient = linked
     service_button = await start_booking(bot, account, patient)
@@ -163,9 +167,9 @@ async def test_the_booking_wizard_reaches_the_slot_list(
 
 
 async def test_a_doctor_search_keeps_the_doctor_constraint(
-    bot: BotHarness, linked, member: TelegramUser, database
+    bot: BotHarness, linked: tuple[PortalAccount, Patient], member: TelegramUser, database: Database
 ) -> None:
-    account, patient = linked
+    account, _patient = linked
     await bot.send(USER_ID, texts.BTN_BOOK)
     await bot.press(USER_ID, bot.find("Scegli l'account").callback_for(account.label))
     await bot.press(USER_ID, bot.find("Scegli il paziente").callback_for("Alfa"))
@@ -182,7 +186,7 @@ async def test_a_doctor_search_keeps_the_doctor_constraint(
 
 
 async def test_filters_can_be_edited_from_the_wizard(
-    bot: BotHarness, linked, member: TelegramUser, database
+    bot: BotHarness, linked: tuple[PortalAccount, Patient], member: TelegramUser, database: Database
 ) -> None:
     account, patient = linked
     service_button = await start_booking(bot, account, patient)
@@ -203,7 +207,7 @@ async def test_filters_can_be_edited_from_the_wizard(
 
 
 async def test_time_windows_can_be_added(
-    bot: BotHarness, linked, member: TelegramUser, database
+    bot: BotHarness, linked: tuple[PortalAccount, Patient], member: TelegramUser, database: Database
 ) -> None:
     account, patient = linked
     service_button = await start_booking(bot, account, patient)
@@ -224,7 +228,7 @@ async def test_time_windows_can_be_added(
 
 
 async def test_an_invalid_time_window_is_rejected(
-    bot: BotHarness, linked, member: TelegramUser
+    bot: BotHarness, linked: tuple[PortalAccount, Patient], member: TelegramUser
 ) -> None:
     account, patient = linked
     service_button = await start_booking(bot, account, patient)
@@ -241,7 +245,11 @@ async def test_an_invalid_time_window_is_rejected(
 
 
 async def test_booking_requires_two_confirmations(
-    bot: BotHarness, linked, member: TelegramUser, portal: FakePortal, bot_portal: FakePortal
+    bot: BotHarness,
+    linked: tuple[PortalAccount, Patient],
+    member: TelegramUser,
+    portal: FakePortal,
+    bot_portal: FakePortal,
 ) -> None:
     account, patient = linked
     bot_portal.appointments_fixture = "appointments_list_empty.html"
@@ -252,9 +260,7 @@ async def test_booking_requires_two_confirmations(
     await bot.send(USER_ID, "visita")
     await bot.press(USER_ID, bot.find("Risultati per").callback_for("VISITA SINTETICA"))
     await bot.press(USER_ID, bot.find("Seleziona una o più sedi").callback_for("Continua"))
-    await bot.press(
-        USER_ID, bot.find("Imposta i filtri").callback_for(texts.BTN_SHOW_AVAILABILITY)
-    )
+    await bot.press(USER_ID, bot.find("Imposta i filtri").callback_for(texts.BTN_SHOW_AVAILABILITY))
     slots = bot.find("proposte compatibili")
     await bot.press(USER_ID, slots.callbacks()[0])
 
@@ -271,7 +277,10 @@ async def test_booking_requires_two_confirmations(
 
 
 async def test_a_replayed_confirmation_never_books_twice(
-    bot: BotHarness, linked, member: TelegramUser, bot_portal: FakePortal
+    bot: BotHarness,
+    linked: tuple[PortalAccount, Patient],
+    member: TelegramUser,
+    bot_portal: FakePortal,
 ) -> None:
     account, patient = linked
     bot_portal.appointments_fixture = "appointments_list_empty.html"
@@ -282,9 +291,7 @@ async def test_a_replayed_confirmation_never_books_twice(
     await bot.send(USER_ID, "visita")
     await bot.press(USER_ID, bot.find("Risultati per").callback_for("VISITA SINTETICA"))
     await bot.press(USER_ID, bot.find("Seleziona una o più sedi").callback_for("Continua"))
-    await bot.press(
-        USER_ID, bot.find("Imposta i filtri").callback_for(texts.BTN_SHOW_AVAILABILITY)
-    )
+    await bot.press(USER_ID, bot.find("Imposta i filtri").callback_for(texts.BTN_SHOW_AVAILABILITY))
     await bot.press(USER_ID, bot.find("proposte compatibili").callbacks()[0])
     await bot.press(
         USER_ID, bot.find("Riepilogo prenotazione").callback_for(texts.BOOK_CONFIRM_STEP1)
@@ -296,7 +303,10 @@ async def test_a_replayed_confirmation_never_books_twice(
 
 
 async def test_a_reused_confirmation_nonce_is_refused(
-    bot: BotHarness, linked, member: TelegramUser, bot_portal: FakePortal
+    bot: BotHarness,
+    linked: tuple[PortalAccount, Patient],
+    member: TelegramUser,
+    bot_portal: FakePortal,
 ) -> None:
     account, patient = linked
     bot_portal.appointments_fixture = "appointments_list_empty.html"
@@ -307,9 +317,7 @@ async def test_a_reused_confirmation_nonce_is_refused(
     await bot.send(USER_ID, "visita")
     await bot.press(USER_ID, bot.find("Risultati per").callback_for("VISITA SINTETICA"))
     await bot.press(USER_ID, bot.find("Seleziona una o più sedi").callback_for("Continua"))
-    await bot.press(
-        USER_ID, bot.find("Imposta i filtri").callback_for(texts.BTN_SHOW_AVAILABILITY)
-    )
+    await bot.press(USER_ID, bot.find("Imposta i filtri").callback_for(texts.BTN_SHOW_AVAILABILITY))
     await bot.press(USER_ID, bot.find("proposte compatibili").callbacks()[0])
     await bot.press(
         USER_ID, bot.find("Riepilogo prenotazione").callback_for(texts.BOOK_CONFIRM_STEP1)
@@ -324,7 +332,10 @@ async def test_a_reused_confirmation_nonce_is_refused(
 
 
 async def test_no_availability_offers_a_monitor(
-    bot: BotHarness, linked, member: TelegramUser, bot_portal: FakePortal
+    bot: BotHarness,
+    linked: tuple[PortalAccount, Patient],
+    member: TelegramUser,
+    bot_portal: FakePortal,
 ) -> None:
     account, patient = linked
     bot_portal.availability_fixture = "availability_empty.json"
@@ -333,23 +344,23 @@ async def test_no_availability_offers_a_monitor(
     await bot.send(USER_ID, "visita")
     await bot.press(USER_ID, bot.find("Risultati per").callback_for("VISITA SINTETICA"))
     await bot.press(USER_ID, bot.find("Seleziona una o più sedi").callback_for("Continua"))
-    await bot.press(
-        USER_ID, bot.find("Imposta i filtri").callback_for(texts.BTN_SHOW_AVAILABILITY)
-    )
+    await bot.press(USER_ID, bot.find("Imposta i filtri").callback_for(texts.BTN_SHOW_AVAILABILITY))
     assert bot.contains("Nessuna disponibilità")
     assert texts.BTN_CREATE_WATCH in " ".join(bot.last().buttons())
 
 
 # --- monitors ----------------------------------------------------------------
-async def test_the_monitor_list_is_empty_at_first(
-    bot: BotHarness, member: TelegramUser
-) -> None:
+async def test_the_monitor_list_is_empty_at_first(bot: BotHarness, member: TelegramUser) -> None:
     await bot.send(USER_ID, texts.BTN_WATCHES)
     assert bot.contains("Non hai monitoraggi attivi")
 
 
 async def test_a_monitor_can_be_paused_resumed_and_deleted(
-    bot: BotHarness, clean_session: AsyncSession, linked, member: TelegramUser, database
+    bot: BotHarness,
+    clean_session: AsyncSession,
+    linked: tuple[PortalAccount, Patient],
+    member: TelegramUser,
+    database: Database,
 ) -> None:
     account, patient = linked
     watch = await make_watch(clean_session, member, account, patient=patient)
@@ -373,7 +384,11 @@ async def test_a_monitor_can_be_paused_resumed_and_deleted(
 
 
 async def test_notifications_can_be_toggled_independently_of_autobook(
-    bot: BotHarness, clean_session: AsyncSession, linked, member: TelegramUser, database
+    bot: BotHarness,
+    clean_session: AsyncSession,
+    linked: tuple[PortalAccount, Patient],
+    member: TelegramUser,
+    database: Database,
 ) -> None:
     account, patient = linked
     watch = await make_watch(
@@ -391,7 +406,11 @@ async def test_notifications_can_be_toggled_independently_of_autobook(
 
 
 async def test_enabling_autobook_requires_a_confirmation(
-    bot: BotHarness, clean_session: AsyncSession, linked, member: TelegramUser, database
+    bot: BotHarness,
+    clean_session: AsyncSession,
+    linked: tuple[PortalAccount, Patient],
+    member: TelegramUser,
+    database: Database,
 ) -> None:
     account, patient = linked
     watch = await make_watch(clean_session, member, account, patient=patient)
@@ -413,7 +432,11 @@ async def test_enabling_autobook_requires_a_confirmation(
 
 
 async def test_a_monitor_can_be_duplicated(
-    bot: BotHarness, clean_session: AsyncSession, linked, member: TelegramUser, database
+    bot: BotHarness,
+    clean_session: AsyncSession,
+    linked: tuple[PortalAccount, Patient],
+    member: TelegramUser,
+    database: Database,
 ) -> None:
     account, patient = linked
     watch = await make_watch(clean_session, member, account, patient=patient)
@@ -422,16 +445,17 @@ async def test_a_monitor_can_be_duplicated(
     await bot.press(USER_ID, callbacks.build(callbacks.WATCH, "dup", watch.id))
     assert bot.contains("Monitoraggio duplicato")
     async with database.read_session() as session:
-        page = await WatchRepository(session).list_for_user(
-            member.id, page=0, page_size=10
-        )
+        page = await WatchRepository(session).list_for_user(member.id, page=0, page_size=10)
         assert page.total == 2
         statuses = {item.status for item in page.items}
         assert WatchStatus.PAUSED in statuses
 
 
 async def test_run_now_is_rate_limited(
-    bot: BotHarness, clean_session: AsyncSession, linked, member: TelegramUser
+    bot: BotHarness,
+    clean_session: AsyncSession,
+    linked: tuple[PortalAccount, Patient],
+    member: TelegramUser,
 ) -> None:
     account, patient = linked
     watch = await make_watch(clean_session, member, account, patient=patient)
@@ -445,7 +469,10 @@ async def test_run_now_is_rate_limited(
 
 
 async def test_a_user_cannot_open_another_users_monitor(
-    bot: BotHarness, clean_session: AsyncSession, linked, member: TelegramUser
+    bot: BotHarness,
+    clean_session: AsyncSession,
+    linked: tuple[PortalAccount, Patient],
+    member: TelegramUser,
 ) -> None:
     account, patient = linked
     watch = await make_watch(clean_session, member, account, patient=patient)
@@ -461,7 +488,7 @@ async def test_a_user_cannot_open_another_users_monitor(
 
 # --- appointments ------------------------------------------------------------
 async def test_appointments_are_listed_and_synchronised(
-    bot: BotHarness, linked, member: TelegramUser
+    bot: BotHarness, linked: tuple[PortalAccount, Patient], member: TelegramUser
 ) -> None:
     await bot.send(USER_ID, texts.BTN_APPOINTMENTS)
     assert bot.contains("Non ci sono appuntamenti")
@@ -473,9 +500,12 @@ async def test_appointments_are_listed_and_synchronised(
 
 
 async def test_cancellation_requires_a_double_confirmation(
-    bot: BotHarness, linked, member: TelegramUser, database, bot_portal: FakePortal
+    bot: BotHarness,
+    linked: tuple[PortalAccount, Patient],
+    member: TelegramUser,
+    database: Database,
+    bot_portal: FakePortal,
 ) -> None:
-    account, patient = linked
     await bot.press(USER_ID, callbacks.build(callbacks.APPOINTMENT, "sync", 0))
     listing = bot.find("Appuntamenti")
     await bot.press(USER_ID, listing.callback_for("VISITA SINTETICA"))
@@ -493,7 +523,10 @@ async def test_cancellation_requires_a_double_confirmation(
 
 
 async def test_a_replayed_cancellation_callback_cancels_once(
-    bot: BotHarness, linked, member: TelegramUser, bot_portal: FakePortal
+    bot: BotHarness,
+    linked: tuple[PortalAccount, Patient],
+    member: TelegramUser,
+    bot_portal: FakePortal,
 ) -> None:
     await bot.press(USER_ID, callbacks.build(callbacks.APPOINTMENT, "sync", 0))
     await bot.press(USER_ID, bot.find("Appuntamenti").callback_for("VISITA SINTETICA"))
@@ -505,7 +538,7 @@ async def test_a_replayed_cancellation_callback_cancels_once(
 
 
 async def test_the_pdf_is_delivered_as_a_document(
-    bot: BotHarness, linked, member: TelegramUser
+    bot: BotHarness, linked: tuple[PortalAccount, Patient], member: TelegramUser
 ) -> None:
     await bot.press(USER_ID, callbacks.build(callbacks.APPOINTMENT, "sync", 0))
     await bot.press(USER_ID, bot.find("Appuntamenti").callback_for("VISITA SINTETICA"))
@@ -526,7 +559,7 @@ async def test_settings_expose_only_non_sensitive_values(
 
 
 async def test_notifications_can_be_disabled_globally(
-    bot: BotHarness, member: TelegramUser, database
+    bot: BotHarness, member: TelegramUser, database: Database
 ) -> None:
     await bot.send(USER_ID, texts.BTN_SETTINGS)
     await bot.press(USER_ID, bot.last().callback_for("Disattiva notifiche"))
@@ -538,7 +571,7 @@ async def test_notifications_can_be_disabled_globally(
 
 
 async def test_quiet_hours_can_be_configured(
-    bot: BotHarness, member: TelegramUser, database
+    bot: BotHarness, member: TelegramUser, database: Database
 ) -> None:
     await bot.send(USER_ID, texts.BTN_SETTINGS)
     await bot.press(USER_ID, bot.last().callback_for("Orari silenziosi"))
@@ -551,7 +584,7 @@ async def test_quiet_hours_can_be_configured(
 
 
 async def test_deleting_the_profile_requires_a_confirmation(
-    bot: BotHarness, linked, member: TelegramUser, database
+    bot: BotHarness, linked: tuple[PortalAccount, Patient], member: TelegramUser, database: Database
 ) -> None:
     await bot.send(USER_ID, texts.BTN_SETTINGS)
     await bot.press(USER_ID, bot.last().callback_for("Privacy"))
@@ -566,9 +599,7 @@ async def test_deleting_the_profile_requires_a_confirmation(
         assert reloaded.status.value == "DELETED"
 
 
-async def test_settings_can_be_exported(
-    bot: BotHarness, member: TelegramUser
-) -> None:
+async def test_settings_can_be_exported(bot: BotHarness, member: TelegramUser) -> None:
     await bot.send(USER_ID, texts.BTN_SETTINGS)
     await bot.press(USER_ID, bot.last().callback_for("Privacy"))
     await bot.press(USER_ID, bot.last().callback_for("Esporta impostazioni"))

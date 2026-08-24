@@ -66,8 +66,20 @@ def test_html_bodies_are_never_logged() -> None:
 
 @pytest.mark.parametrize(
     "key",
-    ["password", "Password", "_token", "Cookie", "Set-Cookie", "csrf_token", "access_token",
-     "refresh_token", "tax_code", "email", "X-CSRF-TOKEN", "session"],
+    [
+        "password",
+        "Password",
+        "_token",
+        "Cookie",
+        "Set-Cookie",
+        "csrf_token",
+        "access_token",
+        "refresh_token",
+        "tax_code",
+        "email",
+        "X-CSRF-TOKEN",
+        "session",
+    ],
 )
 def test_sensitive_keys_are_dropped(key: str) -> None:
     assert redact_mapping({key: "supersecretvalue"})[key] == REDACTED

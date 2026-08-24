@@ -111,9 +111,7 @@ def test_notification_dedup_key_includes_every_component() -> None:
     assert base == notification_dedup_key(event_type="NEW_SLOT", user_id=user, subject="s")
     assert base != notification_dedup_key(event_type="SLOT_LOST", user_id=user, subject="s")
     assert base != notification_dedup_key(event_type="NEW_SLOT", user_id=user, subject="t")
-    assert base != notification_dedup_key(
-        event_type="NEW_SLOT", user_id=uuid.uuid4(), subject="s"
-    )
+    assert base != notification_dedup_key(event_type="NEW_SLOT", user_id=uuid.uuid4(), subject="s")
 
 
 def test_callback_dedup_key_distinguishes_updates() -> None:

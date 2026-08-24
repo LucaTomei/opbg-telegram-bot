@@ -170,9 +170,7 @@ async def test_the_same_account_cannot_be_connected_twice(
 async def test_two_users_may_connect_the_same_portal_account(
     clean_session: AsyncSession, user: TelegramUser
 ) -> None:
-    other = await UserRepository(clean_session).create(
-        telegram_id=999010, status=UserStatus.ACTIVE
-    )
+    other = await UserRepository(clean_session).create(telegram_id=999010, status=UserStatus.ACTIVE)
     await make_account(clean_session, user)
     await make_account(clean_session, other)
 
@@ -206,9 +204,9 @@ async def test_authentication_failures_lock_the_account(
     accounts = PortalAccountRepository(clean_session)
     account = await make_account(clean_session, user)
     await accounts.mark_auth_failure(account, error_code="AUTH", max_failures=2)
-    assert account.status is PortalAccountStatus.REAUTH_REQUIRED
+    assert account.status.value == PortalAccountStatus.REAUTH_REQUIRED.value
     await accounts.mark_auth_failure(account, error_code="AUTH", max_failures=2)
-    assert account.status is PortalAccountStatus.LOCKED
+    assert account.status.value == PortalAccountStatus.LOCKED.value
     assert account.cookie_jar is None
 
 
@@ -257,9 +255,7 @@ async def test_patients_are_upserted_and_deactivated(
         relation=None,
         now=now,
     )
-    deactivated = await patients.deactivate_missing(
-        account.id, seen_tax_codes=[SYNTHETIC_TAX_CODE]
-    )
+    deactivated = await patients.deactivate_missing(account.id, seen_tax_codes=[SYNTHETIC_TAX_CODE])
     assert deactivated == 1
     assert len(await patients.list_for_account(account.id)) == 1
 
@@ -567,9 +563,7 @@ async def test_open_drafts_are_abandoned_on_cancel(
     assert await drafts.latest_open(user.id) is None
 
 
-async def test_draft_is_owned_by_its_user(
-    clean_session: AsyncSession, user: TelegramUser
-) -> None:
+async def test_draft_is_owned_by_its_user(clean_session: AsyncSession, user: TelegramUser) -> None:
     drafts = BookingDraftRepository(clean_session)
     draft = await drafts.create(user_id=user.id, ttl_seconds=600)
     other = await UserRepository(clean_session).create(telegram_id=999020)

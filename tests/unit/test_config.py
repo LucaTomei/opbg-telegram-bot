@@ -84,8 +84,9 @@ def test_admin_ids_are_parsed_and_deduplicated() -> None:
 
 
 def test_non_numeric_admin_ids_fail_loudly() -> None:
+    settings = build(TELEGRAM_ADMIN_IDS="mario")
     with pytest.raises(ConfigurationError):
-        build(TELEGRAM_ADMIN_IDS="mario").admin_telegram_ids
+        _ = settings.admin_telegram_ids
 
 
 def test_bot_username_is_normalised() -> None:
@@ -110,9 +111,7 @@ def test_database_urls_quote_the_password() -> None:
 
 def test_previous_encryption_keys_are_parsed() -> None:
     previous = base64.urlsafe_b64encode(bytes(range(128, 160))).decode()
-    settings = build(
-        APP_ENCRYPTION_KEY_VERSION="2", APP_PREVIOUS_ENCRYPTION_KEYS=f"1:{previous}"
-    )
+    settings = build(APP_ENCRYPTION_KEY_VERSION="2", APP_PREVIOUS_ENCRYPTION_KEYS=f"1:{previous}")
     assert set(settings.previous_encryption_keys) == {1}
 
 

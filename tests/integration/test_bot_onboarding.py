@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot import callbacks, texts
 from app.db.models.users import TelegramUser
@@ -35,9 +37,7 @@ async def create_invite(session: AsyncSession, admin: TelegramUser) -> str:
 
 @pytest.fixture
 async def admin(clean_session: AsyncSession) -> TelegramUser:
-    user = await UserRepository(clean_session).upsert_admin(
-        ADMIN_ID, timezone="Europe/Rome"
-    )
+    user = await UserRepository(clean_session).upsert_admin(ADMIN_ID, timezone="Europe/Rome")
     user.status = UserStatus.ACTIVE
     user.consent_version = "1.0"
     user.consented_at = utc_now()
@@ -154,9 +154,7 @@ async def test_a_revoked_invite_is_refused(
 
 # --- navigation --------------------------------------------------------------
 @pytest.fixture
-async def member(
-    clean_session: AsyncSession, admin: TelegramUser
-) -> TelegramUser:
+async def member(clean_session: AsyncSession, admin: TelegramUser) -> TelegramUser:
     user = await UserRepository(clean_session).create(
         telegram_id=INVITED_ID, status=UserStatus.ACTIVE
     )
@@ -171,12 +169,10 @@ async def test_the_main_menu_shows_the_persistent_keyboard(
 ) -> None:
     await harness.send(INVITED_ID, "/menu")
     payload = harness.last().payload
-    keyboard = payload.get("reply_markup")
+    keyboard: Any = payload.get("reply_markup")
     labels = {
         button["text"] if isinstance(button, dict) else button.text
-        for row in (
-            keyboard["keyboard"] if isinstance(keyboard, dict) else keyboard.keyboard
-        )
+        for row in (keyboard["keyboard"] if isinstance(keyboard, dict) else keyboard.keyboard)
         for button in row
     }
     assert texts.BTN_BOOK in labels
@@ -187,12 +183,10 @@ async def test_administrators_see_the_administration_entry(
     harness: BotHarness, admin: TelegramUser
 ) -> None:
     await harness.send(ADMIN_ID, "/menu")
-    keyboard = harness.last().payload["reply_markup"]
+    keyboard: Any = harness.last().payload["reply_markup"]
     labels = {
         button["text"] if isinstance(button, dict) else button.text
-        for row in (
-            keyboard["keyboard"] if isinstance(keyboard, dict) else keyboard.keyboard
-        )
+        for row in (keyboard["keyboard"] if isinstance(keyboard, dict) else keyboard.keyboard)
         for button in row
     }
     assert texts.BTN_ADMIN in labels
@@ -209,9 +203,7 @@ async def test_help_privacy_and_status_are_available(
     assert harness.contains("Il tuo profilo")
 
 
-async def test_cancel_returns_to_the_menu(
-    harness: BotHarness, member: TelegramUser
-) -> None:
+async def test_cancel_returns_to_the_menu(harness: BotHarness, member: TelegramUser) -> None:
     await harness.send(INVITED_ID, "/cancel")
     assert harness.contains("annullata") or harness.contains("nessuna operazione")
 

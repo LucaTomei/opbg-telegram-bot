@@ -83,9 +83,7 @@ def _call_name(node: ast.Call) -> str | None:
     return None
 
 
-def iter_built_payloads(
-    tree: ast.Module, constants: dict[str, str]
-) -> Iterator[str]:
+def iter_built_payloads(tree: ast.Module, constants: dict[str, str]) -> Iterator[str]:
     """Yield every ``namespace|action`` payload built in this module."""
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):

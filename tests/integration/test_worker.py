@@ -14,6 +14,7 @@ from app.db.repositories.bookings import BookingAttemptRepository
 from app.db.repositories.notifications import NotificationRepository
 from app.db.repositories.system import SystemEventRepository
 from app.db.repositories.watches import SeenSlotRepository, WatchRepository
+from app.db.session import Database
 from app.domain.enums import (
     BookingAttemptStatus,
     NotificationEventType,
@@ -52,9 +53,7 @@ async def test_notify_only_monitor_queues_new_slots(
     patient = await make_patient(clean_session, account)
     watch = await make_watch(clean_session, user, account, patient=patient)
 
-    outcome = await build_processor(container).run(
-        clean_session, watch, worker_id=WORKER_ID
-    )
+    outcome = await build_processor(container).run(clean_session, watch, worker_id=WORKER_ID)
     assert outcome.outcome == "OK"
     assert outcome.slots_found == 3
     assert outcome.new_slots == 3
@@ -145,15 +144,11 @@ async def test_autobook_books_the_best_slot_and_completes_the_monitor(
 ) -> None:
     account = await make_account(clean_session, user)
     patient = await make_patient(clean_session, account)
-    watch = await make_watch(
-        clean_session, user, account, patient=patient, mode=WatchMode.AUTOBOOK
-    )
+    watch = await make_watch(clean_session, user, account, patient=patient, mode=WatchMode.AUTOBOOK)
     portal.appointments_fixture = "appointments_list_empty.html"
     portal.appointments_after_booking = "appointments_list.html"
 
-    outcome = await build_processor(container).run(
-        clean_session, watch, worker_id=WORKER_ID
-    )
+    outcome = await build_processor(container).run(clean_session, watch, worker_id=WORKER_ID)
     assert outcome.booked is True
     assert portal.confirmations == 1
     assert watch.status is WatchStatus.COMPLETED
@@ -172,16 +167,12 @@ async def test_autobook_never_books_a_slot_outside_the_filters(
 ) -> None:
     account = await make_account(clean_session, user)
     patient = await make_patient(clean_session, account)
-    watch = await make_watch(
-        clean_session, user, account, patient=patient, mode=WatchMode.AUTOBOOK
-    )
+    watch = await make_watch(clean_session, user, account, patient=patient, mode=WatchMode.AUTOBOOK)
     # Only Sundays are accepted; the synthetic slots are on other weekdays.
     watch.weekdays_mask = 0b1000000
     await WatchRepository(clean_session).flush()
 
-    outcome = await build_processor(container).run(
-        clean_session, watch, worker_id=WORKER_ID
-    )
+    outcome = await build_processor(container).run(clean_session, watch, worker_id=WORKER_ID)
     assert outcome.booked is False
     assert portal.confirmations == 0
 
@@ -194,13 +185,9 @@ async def test_ambiguous_autobook_is_notified_and_not_retried(
 ) -> None:
     account = await make_account(clean_session, user)
     patient = await make_patient(clean_session, account)
-    watch = await make_watch(
-        clean_session, user, account, patient=patient, mode=WatchMode.AUTOBOOK
-    )
+    watch = await make_watch(clean_session, user, account, patient=patient, mode=WatchMode.AUTOBOOK)
     portal.booking_is_ambiguous = True
-    outcome = await build_processor(container).run(
-        clean_session, watch, worker_id=WORKER_ID
-    )
+    outcome = await build_processor(container).run(clean_session, watch, worker_id=WORKER_ID)
     assert outcome.booked is False
     assert portal.confirmations == 1
     events = await NotificationRepository(clean_session).list_for_user(
@@ -221,12 +208,8 @@ async def test_authentication_failure_suspends_only_that_account(
     )
     first_patient = await make_patient(clean_session, first_account)
     second_patient = await make_patient(clean_session, second_account)
-    failing = await make_watch(
-        clean_session, user, first_account, patient=first_patient
-    )
-    healthy = await make_watch(
-        clean_session, user, second_account, patient=second_patient
-    )
+    failing = await make_watch(clean_session, user, first_account, patient=first_patient)
+    healthy = await make_watch(clean_session, user, second_account, patient=second_patient)
 
     processor = build_processor(container)
     portal.session_expired = True
@@ -249,9 +232,7 @@ async def test_a_suspended_user_stops_the_monitor(
     watch = await make_watch(clean_session, user, account, patient=patient)
     user.status = UserStatus.SUSPENDED
     await WatchRepository(clean_session).flush()
-    outcome = await build_processor(container).run(
-        clean_session, watch, worker_id=WORKER_ID
-    )
+    outcome = await build_processor(container).run(clean_session, watch, worker_id=WORKER_ID)
     assert outcome.outcome == "USER_NOT_ACTIVE"
     assert watch.status is WatchStatus.PAUSED
 
@@ -264,9 +245,7 @@ async def test_a_disabled_account_stops_the_monitor(
     watch = await make_watch(clean_session, user, account, patient=patient)
     account.status = PortalAccountStatus.DISABLED
     await WatchRepository(clean_session).flush()
-    outcome = await build_processor(container).run(
-        clean_session, watch, worker_id=WORKER_ID
-    )
+    outcome = await build_processor(container).run(clean_session, watch, worker_id=WORKER_ID)
     assert outcome.outcome == "ACCOUNT_NOT_ACTIVE"
 
 
@@ -275,7 +254,7 @@ async def test_repeated_portal_errors_suspend_the_monitor(
     container: Container,
     user: TelegramUser,
     portal: FakePortal,
-    database,
+    database: Database,
 ) -> None:
     """Backoff grows and the monitor is suspended once the threshold is hit."""
     from tests.support.portal import build_container, make_settings
@@ -343,9 +322,7 @@ async def test_transient_failures_do_not_break_the_run(
     patient = await make_patient(clean_session, account)
     watch = await make_watch(clean_session, user, account, patient=patient)
     portal.transient_failures = 2
-    outcome = await build_processor(container).run(
-        clean_session, watch, worker_id=WORKER_ID
-    )
+    outcome = await build_processor(container).run(clean_session, watch, worker_id=WORKER_ID)
     assert outcome.outcome == "OK"
 
 
@@ -366,9 +343,7 @@ async def test_a_worker_crash_between_confirm_and_reconcile_is_recovered(
     attempt.confirm_sent_at = utc_now() - timedelta(minutes=30)
     await attempts.flush()
 
-    recovered = await ReconciliationTask(container.settings, container.search).run(
-        clean_session
-    )
+    recovered = await ReconciliationTask(container.settings, container.search).run(clean_session)
     assert recovered == 1
     assert attempt.status is BookingAttemptStatus.AMBIGUOUS
 
@@ -416,9 +391,7 @@ async def test_pending_notifications_are_delivered(
     await build_processor(container).run(clean_session, watch, worker_id=WORKER_ID)
 
     sender = RecordingSender()
-    sent = await container.notifications.dispatch_pending(
-        clean_session, sender, render_for_queue
-    )
+    sent = await container.notifications.dispatch_pending(clean_session, sender, render_for_queue)
     assert sent == 1
     assert "Nuove disponibilità" in sender.sent[0][1]
 
@@ -435,9 +408,9 @@ async def test_delivery_failures_are_retried_with_backoff(
 
     sender = RecordingSender()
     sender.failures = 1
-    assert await container.notifications.dispatch_pending(
-        clean_session, sender, render_for_queue
-    ) == 0
+    assert (
+        await container.notifications.dispatch_pending(clean_session, sender, render_for_queue) == 0
+    )
     events = await NotificationRepository(clean_session).list_for_user(
         user.id, page=0, page_size=10
     )

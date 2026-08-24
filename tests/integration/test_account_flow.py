@@ -6,6 +6,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.composition import Container
+from app.db.models.accounts import PortalAccount
 from app.db.models.users import TelegramUser
 from app.db.repositories.accounts import (
     ConnectTicketRepository,
@@ -14,6 +15,7 @@ from app.db.repositories.accounts import (
 )
 from app.db.repositories.base import utc_now
 from app.db.repositories.watches import WatchRepository
+from app.db.session import Database
 from app.domain.enums import (
     ConnectTicketPurpose,
     PortalAccountStatus,
@@ -41,7 +43,7 @@ async def connect_account(
     *,
     email: str = VALID_EMAIL,
     label: str = "Account principale",
-):
+) -> PortalAccount:
     link = await container.accounts.create_connect_link(session, user)
     tickets = ConnectTicketRepository(session)
     ticket = await tickets.get_by_token(link.url.rsplit("/", 1)[-1])
@@ -122,9 +124,7 @@ async def test_the_same_account_cannot_be_connected_twice(
 ) -> None:
     await connect_account(clean_session, container, user)
     link = await container.accounts.create_connect_link(clean_session, user)
-    ticket = await ConnectTicketRepository(clean_session).get_by_token(
-        link.url.rsplit("/", 1)[-1]
-    )
+    ticket = await ConnectTicketRepository(clean_session).get_by_token(link.url.rsplit("/", 1)[-1])
     assert ticket is not None
     with pytest.raises(ConflictError):
         await container.accounts.complete_connection(
@@ -149,7 +149,11 @@ async def test_consent_is_required_before_connecting(
 
 
 async def test_the_account_quota_is_enforced(
-    clean_session: AsyncSession, container: Container, user: TelegramUser, database, portal
+    clean_session: AsyncSession,
+    container: Container,
+    user: TelegramUser,
+    database: Database,
+    portal: FakePortal,
 ) -> None:
     from tests.support.portal import build_container, make_settings
 
@@ -162,7 +166,7 @@ async def test_the_account_quota_is_enforced(
 
 
 async def test_rate_limit_blocks_repeated_attempts(
-    clean_session: AsyncSession, container: Container, database, portal
+    clean_session: AsyncSession, container: Container, database: Database, portal: FakePortal
 ) -> None:
     from tests.support.portal import build_container, make_settings
 
@@ -201,9 +205,7 @@ async def test_reauthentication_rotates_the_credentials_and_resumes_watches(
         purpose=ConnectTicketPurpose.REAUTH,
         portal_account_id=account.id,
     )
-    ticket = await ConnectTicketRepository(clean_session).get_by_token(
-        link.url.rsplit("/", 1)[-1]
-    )
+    ticket = await ConnectTicketRepository(clean_session).get_by_token(link.url.rsplit("/", 1)[-1])
     assert ticket is not None
     portal.valid_credentials = (OTHER_EMAIL, VALID_PASSWORD)
     refreshed = await container.accounts.complete_connection(
