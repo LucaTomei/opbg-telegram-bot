@@ -703,3 +703,88 @@ async def test_location_preference_order_can_be_changed(
             "Sede Beta",
             "Sede Alfa",
         ]
+
+
+# --- navigation safety net ----------------------------------------------------
+async def test_every_back_button_of_the_wizard_leads_somewhere(
+    bot: BotHarness, linked: tuple[PortalAccount, Patient], member: TelegramUser
+) -> None:
+    """Walk the whole booking wizard and press every «Indietro»."""
+    account, patient = linked
+    service_button = await start_booking(bot, account, patient)
+    await bot.press(USER_ID, service_button)
+    await bot.send(USER_ID, "visita")
+    await bot.press(USER_ID, bot.find("Risultati per").callback_for("VISITA SINTETICA"))
+    await bot.press(USER_ID, bot.find("Seleziona una o più sedi").callback_for("Continua"))
+    await bot.press(USER_ID, bot.find("Imposta i filtri").callback_for(texts.BTN_SHOW_AVAILABILITY))
+    await bot.press(USER_ID, bot.find("proposte compatibili").callbacks()[0])
+
+    # Collect every distinct back target produced along the way.
+    targets = {
+        call.callback_for(texts.BTN_BACK)
+        for call in bot.sent
+        if call.keyboard is not None and texts.BTN_BACK in " ".join(call.buttons())
+    }
+    assert targets, "the wizard produced no back button"
+
+    for target in sorted(targets):
+        bot.reset()
+        await bot.press(USER_ID, target)
+        assert bot.sent, f"back target {target} produced no screen"
+        rendered = " ".join(call.text for call in bot.sent)
+        assert "errore tecnico" not in rendered, f"back target {target} failed: {rendered}"
+        assert "non trovato" not in rendered, f"back target {target} failed: {rendered}"
+
+
+async def test_the_slot_list_can_be_paginated_and_refreshed(
+    bot: BotHarness,
+    linked: tuple[PortalAccount, Patient],
+    member: TelegramUser,
+    database: Database,
+) -> None:
+    account, patient = linked
+    async with database.session() as session:
+        stored = await UserRepository(session).get_by_telegram_id(USER_ID)
+        assert stored is not None
+        stored.page_size = 3
+
+    service_button = await start_booking(bot, account, patient)
+    await bot.press(USER_ID, service_button)
+    await bot.send(USER_ID, "visita")
+    await bot.press(USER_ID, bot.find("Risultati per").callback_for("VISITA SINTETICA"))
+    await bot.press(USER_ID, bot.find("Seleziona una o più sedi").callback_for("Continua"))
+    await bot.press(USER_ID, bot.find("Imposta i filtri").callback_for(texts.BTN_SHOW_AVAILABILITY))
+    slots = bot.find("proposte compatibili")
+
+    bot.reset()
+    await bot.press(USER_ID, slots.callback_for(texts.BTN_REFRESH))
+    assert bot.contains("proposte compatibili")
+    assert "errore" not in " ".join(bot.texts()).lower()
+
+
+async def test_every_screen_of_the_account_and_watch_areas_opens(
+    bot: BotHarness,
+    clean_session: AsyncSession,
+    linked: tuple[PortalAccount, Patient],
+    member: TelegramUser,
+) -> None:
+    """Every inline control of the account and monitor screens must respond."""
+    account, patient = linked
+    await make_watch(clean_session, member, account, patient=patient)
+    await clean_session.commit()
+
+    visited: set[str] = set()
+    for entry_point in (texts.BTN_ACCOUNTS, texts.BTN_WATCHES, texts.BTN_SETTINGS):
+        bot.reset()
+        await bot.send(USER_ID, entry_point)
+        screen = bot.last()
+        for target in screen.callbacks():
+            if target in visited or target.startswith("nv|"):
+                continue
+            visited.add(target)
+            bot.reset()
+            await bot.press(USER_ID, target)
+            assert bot.sent, f"{target} produced no screen"
+            rendered = " ".join(call.text for call in bot.sent)
+            assert "errore tecnico" not in rendered, f"{target} failed: {rendered}"
+    assert visited

@@ -8,7 +8,7 @@ from datetime import date, datetime, time
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot import callbacks, texts
@@ -73,6 +73,7 @@ A_START = "start"
 A_ACCOUNT = "acc"
 A_PATIENT = "pat"
 A_TYPE = "type"
+A_TYPE_MENU = "tmenu"
 A_RESULTS = "res"
 A_PICK = "pick"
 A_LOCATIONS = "loc"
@@ -114,10 +115,6 @@ async def _touch(session: AsyncSession, container: Container, draft: BookingDraf
     await BookingDraftRepository(session).extend(
         draft, ttl_seconds=container.settings.booking_draft_ttl_seconds
     )
-
-
-def _back(action: str, draft: BookingDraft, *args: object) -> str:
-    return callbacks.build(NS, action, draft.id, *[str(arg) for arg in args])
 
 
 # --- step 1: account ---------------------------------------------------------
@@ -208,7 +205,9 @@ async def _render_patients(
         await render(
             event,
             texts.PATIENTS_EMPTY,
-            build_actions([], back_target=_back(A_START, draft, 0), show_cancel=True),
+            build_actions(
+                [], back_target=callbacks.build(NS, A_START, 0, draft.id), show_cancel=True
+            ),
         )
         return
     size = page_size(user)
@@ -232,7 +231,7 @@ async def _render_patients(
             page=current,
             pages=pages,
             extra=(draft.id,),
-            back_target=_back(A_START, draft, 0),
+            back_target=callbacks.build(NS, A_START, 0, draft.id),
             show_cancel=True,
         ),
     )
@@ -261,7 +260,7 @@ async def choose_account(
 
 
 # --- step 3: search type -----------------------------------------------------
-def _search_type_keyboard(draft: BookingDraft) -> object:
+def _search_type_keyboard(draft: BookingDraft) -> InlineKeyboardMarkup:
     return build_actions(
         [
             [
@@ -297,7 +296,7 @@ async def choose_patient(
         raise NotFoundError("patient not found")
     draft.patient_id = patient.id
     await _touch(session, container, draft)
-    await render(query, texts.BOOK_CHOOSE_SEARCH_TYPE, _search_type_keyboard(draft))  # type: ignore[arg-type]
+    await render(query, texts.BOOK_CHOOSE_SEARCH_TYPE, _search_type_keyboard(draft))
 
 
 @router.callback_query(F.data.startswith(f"{NS}|{A_TYPE}"))
@@ -326,9 +325,7 @@ async def choose_search_type(
     await render(
         query,
         prompt,
-        build_actions(
-            [], back_target=callbacks.build(NS, A_PATIENT, draft.id, 0), show_cancel=True
-        ),
+        build_actions([], back_target=callbacks.build(NS, A_TYPE_MENU, draft.id), show_cancel=True),
     )
 
 
@@ -389,7 +386,7 @@ async def run_search(
         await message.answer(
             texts.BOOK_NO_RESULTS.format(query=escape(query_text)),
             reply_markup=build_actions(
-                [], back_target=callbacks.build(NS, A_PATIENT, draft.id, 0), show_cancel=True
+                [], back_target=callbacks.build(NS, A_TYPE_MENU, draft.id), show_cancel=True
             ),
             parse_mode="HTML",
         )
@@ -428,7 +425,7 @@ async def _render_results(
             page=current,
             pages=pages,
             extra=(draft.id,),
-            back_target=callbacks.build(NS, A_PATIENT, draft.id, 0),
+            back_target=callbacks.build(NS, A_TYPE_MENU, draft.id),
             show_cancel=True,
         ),
     )
@@ -716,7 +713,7 @@ async def _render_filters(
     if editing:
         rows.append([Entry(texts.BTN_SAVE_WATCH, callbacks.build(NS, A_SAVE_WATCH, draft.id))])
     else:
-        rows.append([Entry(texts.BTN_SHOW_AVAILABILITY, callbacks.build(NS, A_SLOTS, draft.id, 0))])
+        rows.append([Entry(texts.BTN_SHOW_AVAILABILITY, callbacks.build(NS, A_SLOTS, 0, draft.id))])
     back = (
         callbacks.build(callbacks.WATCH, "open", draft.origin_watch_id)
         if draft.origin_watch_id is not None
@@ -1114,7 +1111,7 @@ async def _render_slots(
                     [
                         Entry(
                             texts.BTN_REFRESH,
-                            callbacks.build(NS, A_SLOTS, draft.id, 0, "r"),
+                            callbacks.build(NS, A_SLOTS, 0, draft.id, "r"),
                         ),
                         Entry(texts.BTN_CREATE_WATCH, callbacks.build(NS, A_TO_WATCH, draft.id)),
                     ]
@@ -1139,7 +1136,7 @@ async def _render_slots(
         [
             InlineKeyboardButton(
                 text=texts.BTN_REFRESH,
-                callback_data=callbacks.build(NS, A_SLOTS, draft.id, current, "r"),
+                callback_data=callbacks.build(NS, A_SLOTS, current, draft.id, "r"),
             ),
             InlineKeyboardButton(
                 text=texts.BTN_CREATE_WATCH,
@@ -1172,15 +1169,9 @@ async def show_slots(
     """Show the paginated slots, refreshing from the portal when requested."""
     await acknowledge(query)
     data = callbacks.parse(query.data)
-    first = data.arg(0)
-    if first and not first.isdigit():
-        draft = await _require_draft(session, user, data.uuid_arg(0))
-        page = data.int_arg(1)
-        refresh = data.arg(2) == "r"
-    else:
-        draft = await _require_draft(session, user, data.uuid_arg(1))
-        page = data.int_arg(0)
-        refresh = data.arg(2) == "r"
+    page = data.int_arg(0)
+    draft = await _require_draft(session, user, data.uuid_arg(1))
+    refresh = data.arg(2) == "r"
     if refresh or draft.slot_cache_refreshed_at is None:
         await _refresh_slots(session, container, user, draft)
         page = 0
@@ -1252,7 +1243,7 @@ async def pick_slot(
         summary,
         build_actions(
             [[Entry(texts.BOOK_CONFIRM_STEP1, callbacks.build(NS, A_CONFIRM1, draft.id))]],
-            back_target=callbacks.build(NS, A_SLOTS, draft.id, 0),
+            back_target=callbacks.build(NS, A_SLOTS, 0, draft.id),
             show_cancel=True,
         ),
     )
@@ -1296,7 +1287,7 @@ async def confirm_step_one(
                     )
                 ]
             ],
-            back_target=callbacks.build(NS, A_SLOTS, draft.id, 0),
+            back_target=callbacks.build(NS, A_SLOTS, 0, draft.id),
             show_cancel=True,
         ),
     )
@@ -1512,3 +1503,14 @@ async def save_watch_edits(
             ]
         ),
     )
+
+
+@router.callback_query(F.data.startswith(f"{NS}|{A_TYPE_MENU}"))
+async def back_to_search_type(
+    query: CallbackQuery, session: AsyncSession, user: TelegramUser
+) -> None:
+    """Return to the «prestazione o medico» screen from any later step."""
+    await acknowledge(query)
+    data = callbacks.parse(query.data)
+    draft = await _require_draft(session, user, data.uuid_arg(0))
+    await render(query, texts.BOOK_CHOOSE_SEARCH_TYPE, _search_type_keyboard(draft))

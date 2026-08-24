@@ -61,8 +61,8 @@ Tutti i comandi sono stati eseguiti il 2026-08-24 sulla revisione corrente.
 | Linter | `ruff check .` | ✅ nessun rilievo |
 | Type checker | `mypy app tests` | ✅ 144 file, nessun errore (modalità `strict`) |
 | Test unit/contract/security | `pytest tests/unit tests/contract tests/security` | ✅ 316 passati, 5 deselezionati (live) |
-| Test integrazione (MySQL) | `pytest tests/integration` | ✅ 245 passati |
-| Suite completa | `pytest` | ✅ 561 passati, 5 deselezionati |
+| Test integrazione (MySQL) | `pytest tests/integration` | ✅ 250 passati |
+| Suite completa | `pytest` | ✅ 566 passati, 5 deselezionati |
 | Copertura | `pytest --cov=app` | ✅ 78% complessivo (soglia documentata: 70%) |
 | Compose config | `docker compose config` | ✅ configurazione valida |
 | Build immagine | `docker compose build` | ✅ `opbg-telegram-bot:1.0.0` |
@@ -74,7 +74,7 @@ Tutti i comandi sono stati eseguiti il 2026-08-24 sulla revisione corrente.
 | Spegnimento pulito | `docker compose stop worker` | ✅ `WORKER_STOPPED` con rilascio dei lease |
 | Secret scan | `bash scripts/secret_scan.sh` | ✅ pulito |
 | Scan placeholder | `bash scripts/placeholder_scan.sh` | ✅ pulito (nessun `TODO`/`FIXME`/`pass`/`NotImplementedError`) |
-| Audit bottoni | `python scripts/handler_audit.py` | ✅ 103 payload di callback, tutti gestiti |
+| Audit bottoni | `python scripts/handler_audit.py` | ✅ 104 payload di callback, tutti gestiti |
 | CI | `.github/workflows/ci.yml` | ✅ job `guardrails` (secret e placeholder scan), `quality` (formato, lint, tipi, audit bottoni, test con soglia 70%), `image` (build e `compose config`); i test live restano deselezionati |
 
 ### Copertura sulle parti critiche
@@ -127,7 +127,7 @@ critici misurati singolarmente:
 | AC-022 | MySQL non è esposto in produzione | `compose.yaml` (nessun `ports` su `mysql`), `compose.override.yaml` (solo sviluppo) | `docker compose -f compose.yaml config` non pubblica porte MySQL; verificato manualmente | ✅ |
 | AC-023 | Repo e immagini senza HAR, `.env`, segreti o dati reali | `.gitignore`, `.dockerignore`, `scripts/secret_scan.sh` | `bash scripts/secret_scan.sh`, `tests/security/test_no_destructive_live_tests.py` | ✅ |
 | AC-024 | Tutti i servizi Docker diventano healthy da DB vuoto | `Dockerfile`, `compose.yaml`, `app/cli.py` | `docker compose down -v` → `migrate` → `up` → `ps` tutti healthy | ✅ |
-| AC-025 | Nessun bottone privo di handler o con placeholder | `app/bot/*` | `python scripts/handler_audit.py` (103 payload), `bash scripts/placeholder_scan.sh` | ✅ |
+| AC-025 | Nessun bottone privo di handler o con placeholder | `app/bot/*` | `python scripts/handler_audit.py` (104 payload), `bash scripts/placeholder_scan.sh` | ✅ |
 
 ## Definition of Done
 

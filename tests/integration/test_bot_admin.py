@@ -430,3 +430,43 @@ async def test_a_regular_user_cannot_use_the_invite_command(
 ) -> None:
     await bot.send(MEMBER_ID, "/invite")
     assert bot.contains(texts.ADMIN_ONLY)
+
+
+async def test_every_back_button_of_the_administration_leads_somewhere(
+    bot: BotHarness,
+    admin: TelegramUser,
+    member: TelegramUser,
+    linked: tuple[PortalAccount, Patient],
+) -> None:
+    """Open every administrative section and press every «Indietro»."""
+    sections = ("usr", "inv", "acc", "pat", "wch", "att", "app", "ntf", "evt", "job", "aud", "sys")
+    targets: set[str] = set()
+    for section in sections:
+        await bot.press(ADMIN_ID, callbacks.build(NS, section, 0))
+        for call in bot.sent:
+            if call.keyboard is None:
+                continue
+            if texts.BTN_BACK in " ".join(call.buttons()):
+                targets.add(call.callback_for(texts.BTN_BACK))
+        bot.reset()
+
+    assert targets
+    for target in sorted(targets):
+        bot.reset()
+        await bot.press(ADMIN_ID, target)
+        assert bot.sent, f"back target {target} produced no screen"
+        rendered = " ".join(call.text for call in bot.sent)
+        assert "errore tecnico" not in rendered, f"back target {target} failed: {rendered}"
+
+
+async def test_every_administration_section_opens(
+    bot: BotHarness, admin: TelegramUser, member: TelegramUser
+) -> None:
+    await bot.send(ADMIN_ID, texts.BTN_ADMIN)
+    dashboard = bot.last()
+    for entry in dashboard.callbacks():
+        bot.reset()
+        await bot.press(ADMIN_ID, entry)
+        assert bot.sent, f"section {entry} produced no screen"
+        rendered = " ".join(call.text for call in bot.sent)
+        assert "errore tecnico" not in rendered, f"section {entry} failed: {rendered}"
