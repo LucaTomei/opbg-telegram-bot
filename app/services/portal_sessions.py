@@ -165,7 +165,10 @@ class PortalSessionManager:
         if account.status in (PortalAccountStatus.LOCKED, PortalAccountStatus.REAUTH_REQUIRED):
             return
         cookies = portal_session.cookies_as_dict()
-        if not cookies:
+        expected = self._settings.portal_session_cookie_name
+        if not cookies or expected not in cookies:
+            # Without the session cookie the jar is useless and would only cause
+            # a failed verification on the next run.
             return
         try:
             account.cookie_jar = cookies

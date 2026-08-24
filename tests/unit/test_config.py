@@ -138,3 +138,10 @@ def test_secrets_are_not_exposed_by_repr() -> None:
     rendered = repr(settings)
     assert settings.telegram_bot_token.get_secret_value() not in rendered
     assert settings.mysql_password.get_secret_value() not in rendered
+
+
+def test_the_invite_deep_link_uses_the_bot_username() -> None:
+    settings = build(TELEGRAM_BOT_USERNAME="@opbg_test_bot")
+    assert settings.invite_link("AAAA-BBBB-CCCC") == (
+        "https://t.me/opbg_test_bot?start=AAAA-BBBB-CCCC"
+    )

@@ -6,9 +6,10 @@ import asyncio
 from datetime import timedelta
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
+from app.composition import Container
 from app.db.models.system import AdminAuditLog
 from app.db.models.users import TelegramUser
 from app.db.repositories.audit import AuditLogImmutableError, AuditRepository
@@ -304,3 +305,55 @@ async def test_the_lock_is_released_when_the_block_raises(
 
     async with factory() as competitor, account_lock(competitor, account.id):
         pass
+
+
+async def test_audit_retention_is_applied_deliberately(
+    clean_session: AsyncSession, admin_user: TelegramUser
+) -> None:
+    """Retention is the one deliberate exception to the append-only rule."""
+    audit = AuditRepository(clean_session)
+    old = await audit.record(
+        admin_user_id=admin_user.id,
+        action=AuditAction.REVEAL_PII,
+        target_type="telegram_user",
+        target_id="old",
+        reason="vecchia voce",
+    )
+    await audit.record(
+        admin_user_id=admin_user.id,
+        action=AuditAction.REVEAL_PII,
+        target_type="telegram_user",
+        target_id="recent",
+        reason="voce recente",
+    )
+    # The ORM refuses to update the log, so the age is set with an explicit
+    # statement: the point of the test is the retention, not the guard.
+    await clean_session.execute(
+        text("UPDATE admin_audit_log SET created_at = :when WHERE target_id = 'old'"),
+        {"when": utc_now() - timedelta(days=800)},
+    )
+
+    clean_session.expunge(old)
+    removed = await audit.purge_before(before=utc_now() - timedelta(days=365))
+    assert removed == 1
+    remaining = await audit.list_entries(page=0, page_size=10)
+    assert {item.target_id for item in remaining.items} == {"recent"}
+
+
+async def test_the_cleanup_task_honours_the_audit_retention(
+    clean_session: AsyncSession, container: Container, admin_user: TelegramUser
+) -> None:
+    from app.worker.tasks import CleanupTask
+
+    await AuditRepository(clean_session).record(
+        admin_user_id=admin_user.id,
+        action=AuditAction.INVITE_CREATED,
+        target_type="invite",
+        target_id="fresh",
+        reason="voce recente",
+    )
+    removed = await CleanupTask(container.settings).run(clean_session)
+    assert "audit_entries" in removed
+    assert removed["audit_entries"] == 0
+    remaining = await AuditRepository(clean_session).list_entries(page=0, page_size=10)
+    assert remaining.total == 1

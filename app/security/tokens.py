@@ -12,12 +12,41 @@ import secrets
 from hashlib import sha256
 from typing import Final
 
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+
 TOKEN_BYTES: Final[int] = 32
 INVITE_CODE_BYTES: Final[int] = 12
 NONCE_BYTES: Final[int] = 16
 HASH_BYTES: Final[int] = 32
 
 _INVITE_ALPHABET: Final[str] = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+_PEPPER_SALT: Final[bytes] = b"opbg-telegram-bot/token-pepper/v1"
+
+
+class TokenHasher:
+    """Hashes one-time tokens with a server side pepper.
+
+    Only the digest is persisted.  Deriving it with a keyed HMAC means that a
+    read-only leak of the database is not enough to verify a guessed invite
+    code or download token: the application secret is required as well.
+    """
+
+    def __init__(self, *, secret: bytes) -> None:
+        if len(secret) < 32:
+            raise ValueError("the token pepper must provide at least 32 bytes")
+        self._pepper = HKDF(
+            algorithm=hashes.SHA256(),
+            length=HASH_BYTES,
+            salt=_PEPPER_SALT,
+            info=b"one-time-tokens",
+        ).derive(secret)
+
+    def hash(self, value: str) -> bytes:
+        return hmac.new(self._pepper, value.encode("utf-8"), sha256).digest()
+
+    def verify(self, value: str, digest: bytes) -> bool:
+        return hmac.compare_digest(self.hash(value), digest)
 
 
 def generate_token() -> str:
@@ -42,16 +71,20 @@ def normalize_invite_code(code: str) -> str:
 
 
 def hash_token(token: str) -> bytes:
-    """Return the SHA-256 digest persisted in place of the token."""
-    return sha256(token.encode("utf-8")).digest()
+    """Return the peppered digest persisted in place of the token."""
+    from app.security.context import get_token_hasher
+
+    return get_token_hasher().hash(token)
 
 
 def hash_invite_code(code: str) -> bytes:
     """Hash an invite code after normalisation."""
+    from app.security.context import get_token_hasher
+
     normalized = normalize_invite_code(code)
     if not normalized:
         raise ValueError("invite code must not be empty")
-    return sha256(normalized.encode("utf-8")).digest()
+    return get_token_hasher().hash(normalized)
 
 
 def verify_token(token: str, token_hash: bytes) -> bool:

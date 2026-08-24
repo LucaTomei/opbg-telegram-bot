@@ -470,3 +470,12 @@ async def test_every_administration_section_opens(
         assert bot.sent, f"section {entry} produced no screen"
         rendered = " ".join(call.text for call in bot.sent)
         assert "errore tecnico" not in rendered, f"section {entry} failed: {rendered}"
+
+
+async def test_the_invite_message_carries_a_deep_link(bot: BotHarness, admin: TelegramUser) -> None:
+    await bot.send(ADMIN_ID, "/invite")
+    bot.reset()
+    await bot.send(ADMIN_ID, "1")
+    created = bot.last()
+    assert "https://t.me/" in created.text
+    assert "?start=" in created.text

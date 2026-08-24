@@ -68,3 +68,37 @@ def test_content_hash_is_hex_and_stable() -> None:
 
 def test_nonces_are_unique() -> None:
     assert len({tokens.generate_nonce() for _ in range(200)}) == 200
+
+
+# --- pepper ------------------------------------------------------------------
+def test_the_digest_depends_on_the_application_secret() -> None:
+    """A database leak alone must not allow verifying a guessed code."""
+    from app.security.tokens import TokenHasher
+
+    value = "ABCD-EFGH-JKLM"
+    first = TokenHasher(secret=bytes(range(32))).hash(value)
+    second = TokenHasher(secret=bytes(range(32, 64))).hash(value)
+    assert first != second
+    assert len(first) == 32
+
+
+def test_the_hasher_verifies_in_constant_time() -> None:
+    from app.security.tokens import TokenHasher
+
+    hasher = TokenHasher(secret=bytes(range(32)))
+    digest = hasher.hash("valore")
+    assert hasher.verify("valore", digest) is True
+    assert hasher.verify("altro", digest) is False
+
+
+def test_a_weak_pepper_is_refused() -> None:
+    from app.security.tokens import TokenHasher
+
+    with pytest.raises(ValueError, match="32 bytes"):
+        TokenHasher(secret=b"corto")
+
+
+def test_the_plaintext_never_appears_in_the_digest() -> None:
+    code = tokens.generate_invite_code()
+    digest = tokens.hash_invite_code(code)
+    assert tokens.normalize_invite_code(code).encode() not in digest

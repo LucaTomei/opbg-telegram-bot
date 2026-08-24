@@ -37,6 +37,16 @@ logger = get_logger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
+class UserPreferences:
+    """Per-deployment defaults applied when a user is first registered."""
+
+    timezone: str
+    pdf_delivery_mode: PdfDeliveryMode
+    page_size: int
+    max_slots_shown: int
+
+
+@dataclass(frozen=True, slots=True)
 class InviteRedemptionResult:
     """Outcome of redeeming an invite code."""
 
@@ -50,13 +60,29 @@ class UserService:
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
 
+    def default_preferences(self) -> UserPreferences:
+        """Deployment defaults applied to a newly registered user."""
+        return UserPreferences(
+            timezone=self._settings.app_timezone,
+            pdf_delivery_mode=PdfDeliveryMode(self._settings.pdf_delivery_mode.upper()),
+            page_size=self._settings.page_size,
+            max_slots_shown=self._settings.max_slots_shown,
+        )
+
     async def bootstrap_admins(self, session: AsyncSession) -> list[TelegramUser]:
         """Upsert the administrators declared in ``TELEGRAM_ADMIN_IDS``."""
         users = UserRepository(session)
         admins: list[TelegramUser] = []
+        defaults = self.default_preferences()
         for telegram_id in self._settings.admin_telegram_ids:
             admins.append(
-                await users.upsert_admin(telegram_id, timezone=self._settings.app_timezone)
+                await users.upsert_admin(
+                    telegram_id,
+                    timezone=defaults.timezone,
+                    pdf_delivery_mode=defaults.pdf_delivery_mode,
+                    page_size=defaults.page_size,
+                    max_slots_shown=defaults.max_slots_shown,
+                )
             )
         await users.demote_admins_except(self._settings.admin_telegram_ids)
         logger.info(
@@ -115,11 +141,15 @@ class UserService:
 
         newly_registered = False
         if user is None:
+            defaults = self.default_preferences()
             user = await users.create(
                 telegram_id=telegram_id,
                 role=UserRole.USER,
                 status=UserStatus.PENDING_CONSENT,
-                timezone=self._settings.app_timezone,
+                timezone=defaults.timezone,
+                pdf_delivery_mode=defaults.pdf_delivery_mode,
+                page_size=defaults.page_size,
+                max_slots_shown=defaults.max_slots_shown,
             )
             newly_registered = True
         elif user.status is UserStatus.DELETED:

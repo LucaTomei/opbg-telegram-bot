@@ -104,3 +104,53 @@ def test_the_italian_texts_carry_the_meaning_without_emoji() -> None:
         and not any(character.isalpha() for character in getattr(texts, name))
     ]
     assert emoji_only == []
+
+
+def test_no_configuration_value_is_declared_but_unused() -> None:
+    """Dead configuration is a placeholder in disguise."""
+    from app.config import Settings
+
+    # These are consumed through a derived property or by the Compose stack.
+    indirect = {
+        "app_blind_index_key",
+        "app_previous_encryption_keys",
+        "app_secret_key",
+        "database_host",
+        "database_port",
+        "mysql_database",
+        "mysql_password",
+        "mysql_user",
+        "telegram_admin_ids",
+        "app_domain",
+        "acme_email",
+        # Consumed by Settings.invite_link, which the administration screens call.
+        "telegram_bot_username",
+    }
+    sources = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in (ROOT / "app").rglob("*.py")
+        if path.name != "config.py"
+    )
+    unused = sorted(
+        name for name in Settings.model_fields if name not in indirect and name not in sources
+    )
+    assert unused == []
+
+
+def test_every_documented_variable_exists_in_the_settings() -> None:
+    """`.env.example` must not advertise a variable the application ignores."""
+    from app.config import Settings
+
+    documented = {
+        line.split("=", 1)[0].strip().lower()
+        for line in (ROOT / ".env.example").read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.strip().startswith("#") and "=" in line
+    }
+    known = set(Settings.model_fields) | {
+        # Consumed by the Compose stack rather than by the application.
+        "mysql_root_password",
+        "backup_retention_days",
+        "backup_passphrase",
+        "backup_passphrase_file",
+    }
+    assert documented - known == set()

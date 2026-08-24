@@ -15,20 +15,27 @@ from contextlib import contextmanager
 from app.config import Settings
 from app.security.blind_index import BlindIndexService
 from app.security.encryption import EncryptionService
+from app.security.tokens import TokenHasher
 
 _encryption: EncryptionService | None = None
 _blind_index: BlindIndexService | None = None
+_token_hasher: TokenHasher | None = None
 
 
 class SecurityNotConfiguredError(RuntimeError):
     """Raised when encrypted data is accessed before security is configured."""
 
 
-def configure_security(encryption: EncryptionService, blind_index: BlindIndexService) -> None:
+def configure_security(
+    encryption: EncryptionService,
+    blind_index: BlindIndexService,
+    token_hasher: TokenHasher | None = None,
+) -> None:
     """Install the process-wide security services."""
-    global _encryption, _blind_index
+    global _encryption, _blind_index, _token_hasher
     _encryption = encryption
     _blind_index = blind_index
+    _token_hasher = token_hasher
 
 
 def configure_security_from_settings(settings: Settings) -> None:
@@ -40,6 +47,7 @@ def configure_security_from_settings(settings: Settings) -> None:
             previous_keys=settings.previous_encryption_keys,
         ),
         BlindIndexService(master_key=settings.blind_index_key),
+        TokenHasher(secret=settings.token_pepper),
     )
 
 
@@ -55,19 +63,27 @@ def get_blind_index() -> BlindIndexService:
     return _blind_index
 
 
+def get_token_hasher() -> TokenHasher:
+    if _token_hasher is None:
+        raise SecurityNotConfiguredError("token hasher is not configured")
+    return _token_hasher
+
+
 def is_configured() -> bool:
-    return _encryption is not None and _blind_index is not None
+    return _encryption is not None and _blind_index is not None and _token_hasher is not None
 
 
 @contextmanager
 def security_context(
-    encryption: EncryptionService, blind_index: BlindIndexService
+    encryption: EncryptionService,
+    blind_index: BlindIndexService,
+    token_hasher: TokenHasher | None = None,
 ) -> Iterator[None]:
     """Temporarily install security services; used by tests and rotation jobs."""
-    global _encryption, _blind_index
-    previous = (_encryption, _blind_index)
-    configure_security(encryption, blind_index)
+    global _encryption, _blind_index, _token_hasher
+    previous = (_encryption, _blind_index, _token_hasher)
+    configure_security(encryption, blind_index, token_hasher)
     try:
         yield
     finally:
-        _encryption, _blind_index = previous
+        _encryption, _blind_index, _token_hasher = previous

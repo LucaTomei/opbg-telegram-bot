@@ -740,6 +740,7 @@ async def create_invite(
     await message.answer(
         texts.ADMIN_INVITE_CREATED.format(
             code=code,
+            link=container.settings.invite_link(code),
             uses=int(raw),
             expires=f"{container.settings.invite_ttl_hours} ore",
         ),

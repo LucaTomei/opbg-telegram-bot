@@ -276,6 +276,13 @@ class Settings(BaseSettings):
         )
 
     @property
+    def token_pepper(self) -> bytes:
+        """Key material used to pepper the hashes of one-time tokens."""
+        return decode_key_material(
+            self.app_secret_key.get_secret_value(), field_name="APP_SECRET_KEY"
+        )
+
+    @property
     def blind_index_key(self) -> bytes:
         return decode_key_material(
             self.app_blind_index_key.get_secret_value(), field_name="APP_BLIND_INDEX_KEY"
@@ -328,6 +335,10 @@ class Settings(BaseSettings):
 
     def pdf_url(self, token: str) -> str:
         return f"{self.public_base_url}/download/{token}"
+
+    def invite_link(self, code: str) -> str:
+        """Deep link that opens the bot and redeems the invite in one tap."""
+        return f"https://t.me/{self.telegram_bot_username}?start={code}"
 
 
 def _quote(value: str) -> str:

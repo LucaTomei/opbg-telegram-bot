@@ -414,8 +414,9 @@ ADMIN_ASK_REASON: Final[str] = (
 ADMIN_REASON_TOO_SHORT: Final[str] = "Motivo troppo corto: servono almeno 5 caratteri."
 ADMIN_INVITE_CREATED: Final[str] = (
     "Invito creato.\n\nCodice: <code>{code}</code>\n"
+    "Link diretto: {link}\n"
     "Usi: <b>{uses}</b> · Scadenza: <b>{expires}</b>\n\n"
-    "Il codice è mostrato una sola volta."
+    "Il codice è mostrato una sola volta: copialo o inoltra il link."
 )
 ADMIN_INVITE_REVOKED: Final[str] = "Invito revocato."
 ADMIN_INVITE_ASK_USES: Final[str] = "Quanti utilizzi deve avere l'invito? (1-50)"

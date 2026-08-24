@@ -59,7 +59,17 @@ A_DELETE_OK = "delok"
 A_EDIT = "edit"
 A_INTERVAL_SET = "iset"
 
-INTERVAL_CHOICES: tuple[int, ...] = (120, 300, 600, 1800, 3600, 21600)
+BASE_INTERVAL_CHOICES: tuple[int, ...] = (120, 300, 600, 1800, 3600, 21600)
+
+
+def interval_choices(container: Container) -> tuple[int, ...]:
+    """Offer the configured default plus the standard steps, above the minimum."""
+    minimum = container.settings.monitor_min_interval_seconds
+    candidates = {
+        container.settings.monitor_default_interval_seconds,
+        *BASE_INTERVAL_CHOICES,
+    }
+    return tuple(sorted(value for value in candidates if value >= minimum))
 
 
 class WatchStates(StatesGroup):
@@ -177,15 +187,16 @@ async def choose_notify_mode(
     )
     draft_id = data.uuid_arg(0)
     minimum = container.settings.monitor_min_interval_seconds
+    choices = interval_choices(container)
     rows = [
         [
             Entry(
                 f"{seconds // 60} min" if seconds >= 60 else f"{seconds} s",
                 callbacks.build(NS, A_INTERVAL, draft_id, seconds),
             )
-            for seconds in group
+            for seconds in choices[index : index + 2]
         ]
-        for group in (INTERVAL_CHOICES[:2], INTERVAL_CHOICES[2:4], INTERVAL_CHOICES[4:])
+        for index in range(0, len(choices), 2)
     ]
     await render(
         query,
@@ -723,6 +734,7 @@ async def change_interval(
         )
         return
     minimum = container.settings.monitor_min_interval_seconds
+    choices = interval_choices(container)
     rows = [
         [
             Entry(
@@ -730,10 +742,9 @@ async def change_interval(
                 + (f"{seconds // 60} min" if seconds >= 60 else f"{seconds} s"),
                 callbacks.build(NS, A_INTERVAL_SET, watch.id, seconds),
             )
-            for seconds in group
-            if seconds >= minimum
+            for seconds in choices[index : index + 2]
         ]
-        for group in (INTERVAL_CHOICES[:2], INTERVAL_CHOICES[2:4], INTERVAL_CHOICES[4:])
+        for index in range(0, len(choices), 2)
     ]
     await render(
         query,

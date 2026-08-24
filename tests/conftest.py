@@ -26,6 +26,7 @@ from app.domain.enums import UserRole, UserStatus
 from app.security.blind_index import BlindIndexService
 from app.security.context import configure_security
 from app.security.encryption import EncryptionService, generate_key_material
+from app.security.tokens import TokenHasher
 
 if TYPE_CHECKING:
     from app.composition import Container
@@ -75,6 +76,7 @@ def security(settings: Settings) -> Iterator[None]:
     configure_security(
         EncryptionService(active_key=settings.active_encryption_key, active_key_version=1),
         BlindIndexService(master_key=settings.blind_index_key),
+        TokenHasher(secret=settings.token_pepper),
     )
     yield
 

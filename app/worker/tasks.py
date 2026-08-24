@@ -18,6 +18,7 @@ from app.db.repositories.accounts import (
     PatientRepository,
     PortalAccountRepository,
 )
+from app.db.repositories.audit import AuditRepository
 from app.db.repositories.base import utc_now
 from app.db.repositories.bookings import AppointmentRepository, BookingAttemptRepository
 from app.db.repositories.conversations import (
@@ -682,5 +683,10 @@ class CleanupTask:
             ),
             "heartbeats": await HeartbeatRepository(session).purge_stale(
                 before=moment - timedelta(days=7)
+            ),
+            # The audit trail is append-only for the application; retention is
+            # the one deliberate exception, driven by AUDIT_RETENTION_DAYS.
+            "audit_entries": await AuditRepository(session).purge_before(
+                before=moment - timedelta(days=self._settings.audit_retention_days)
             ),
         }

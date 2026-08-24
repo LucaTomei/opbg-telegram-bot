@@ -10,7 +10,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Select, event, select
+from sqlalchemy import Select, event, select, text
 from sqlalchemy.orm import Mapper
 from sqlalchemy.orm.session import ORMExecuteState
 
@@ -87,6 +87,20 @@ class AuditRepository(BaseRepository[AdminAuditLog]):
         if since is not None:
             statement = statement.where(AdminAuditLog.created_at >= since)
         return await self.paginate(statement, page=page, page_size=page_size)
+
+    async def purge_before(self, *, before: datetime) -> int:
+        """Apply the configured retention to the audit trail.
+
+        The ORM guard makes the log append-only for the application; retention
+        is a deliberate policy, so it is applied with an explicit statement and
+        reported by the caller instead of happening silently.
+        """
+        result = await self.session.execute(
+            text("DELETE FROM admin_audit_log WHERE created_at < :before"),
+            {"before": before},
+        )
+        await self.session.flush()
+        return int(getattr(result, "rowcount", 0) or 0)
 
 
 def guard_audit_statement(state: ORMExecuteState) -> None:
