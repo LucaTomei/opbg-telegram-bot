@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from contextvars import ContextVar
 from typing import Any
 
 from sqlalchemy import text
@@ -22,6 +23,30 @@ logger = get_logger(__name__)
 
 #: MySQL named locks are limited to 64 characters.
 MAX_LOCK_NAME_LENGTH = 60
+
+#: The session that owns the current unit of work, when one is active.
+_CURRENT_SESSION: ContextVar[AsyncSession | None] = ContextVar("current_session", default=None)
+
+
+def current_session() -> AsyncSession | None:
+    """Return the ambient session, if the caller runs inside a unit of work."""
+    return _CURRENT_SESSION.get()
+
+
+@asynccontextmanager
+async def bind_session(session: AsyncSession) -> AsyncIterator[AsyncSession]:
+    """Publish ``session`` as the ambient unit of work for the current task.
+
+    Components that cannot receive the session by injection — the aiogram FSM
+    storage is resolved before the middleware chain — reuse it instead of
+    opening a second transaction.  Two transactions on the same rows inside one
+    update would otherwise block each other on the foreign-key parent locks.
+    """
+    token = _CURRENT_SESSION.set(session)
+    try:
+        yield session
+    finally:
+        _CURRENT_SESSION.reset(token)
 
 
 def create_engine(settings: Settings) -> AsyncEngine:

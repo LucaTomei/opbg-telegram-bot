@@ -9,6 +9,7 @@ from aiogram import BaseMiddleware
 from aiogram.types import TelegramObject
 
 from app.composition import Container
+from app.db.session import bind_session
 from app.logging import correlation_scope, get_logger
 
 logger = get_logger(__name__)
@@ -27,7 +28,7 @@ class ContextMiddleware(BaseMiddleware):
         data: dict[str, Any],
     ) -> Any:
         with correlation_scope() as correlation_id:
-            async with self._container.database.session() as session:
+            async with self._container.database.session() as session, bind_session(session):
                 data["container"] = self._container
                 data["settings"] = self._container.settings
                 data["session"] = session

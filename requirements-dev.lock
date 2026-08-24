@@ -126,9 +126,12 @@ pytest==9.1.1
     #   opbg-telegram-bot (pyproject.toml)
     #   pytest-asyncio
     #   pytest-cov
+    #   pytest-timeout
 pytest-asyncio==1.4.0
     # via opbg-telegram-bot (pyproject.toml)
 pytest-cov==7.1.0
+    # via opbg-telegram-bot (pyproject.toml)
+pytest-timeout==2.4.0
     # via opbg-telegram-bot (pyproject.toml)
 python-dotenv==1.2.3
     # via

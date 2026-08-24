@@ -83,6 +83,31 @@ class FakePortal:
     cancel_calls: int = field(default=0, init=False)
     requests: list[str] = field(default_factory=list, init=False)
 
+    def reset(self) -> None:
+        """Restore the default behaviour between tests."""
+        default = FakePortal()
+        for name in (
+            "valid_credentials",
+            "availability_fixture",
+            "appointments_fixture",
+            "appointments_after_booking",
+            "appointments_after_cancel",
+            "booking_is_ambiguous",
+            "cancellation_is_ambiguous",
+            "forced_status",
+            "transient_failures",
+            "session_expired",
+            "pdf_content_type",
+            "pdf_bytes",
+            "session_cookie",
+        ):
+            setattr(self, name, getattr(default, name))
+        self.booked = False
+        self.cancelled = False
+        self.confirmations = 0
+        self.cancel_calls = 0
+        self.requests.clear()
+
     def handle(self, request: httpx.Request) -> httpx.Response:
         path = request.url.path
         self.requests.append(f"{request.method} {path}")

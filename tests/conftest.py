@@ -28,6 +28,7 @@ from app.security.encryption import EncryptionService, generate_key_material
 
 if TYPE_CHECKING:
     from app.composition import Container
+    from tests.support.bot import BotHarness
     from tests.support.portal import FakePortal
 
 #: Deterministic key material so encrypted fixtures stay reproducible.
@@ -184,3 +185,41 @@ def container(settings: Settings, database: Database, portal: "FakePortal") -> "
     from tests.support.portal import build_container
 
     return build_container(settings, database, portal)
+
+
+@pytest.fixture(scope="session")
+def bot_portal() -> "FakePortal":
+    """A fake portal shared by the bot harness for the whole session."""
+    from tests.support.portal import FakePortal
+
+    return FakePortal()
+
+
+@pytest.fixture(scope="session")
+def bot_container(
+    settings: Settings, engine: AsyncEngine, bot_portal: "FakePortal"
+) -> "Container":
+    from tests.support.portal import build_container
+
+    return build_container(settings, Database(settings, engine=engine), bot_portal)
+
+
+@pytest.fixture(scope="session")
+async def bot_harness(bot_container: "Container") -> AsyncIterator["BotHarness"]:
+    """One dispatcher per session: aiogram routers can only be attached once."""
+    from tests.support.bot import BotHarness
+
+    harness = BotHarness.build(bot_container)
+    yield harness
+    await harness.close()
+
+
+@pytest.fixture
+async def bot(
+    bot_harness: "BotHarness", bot_portal: "FakePortal", clean_session: AsyncSession
+) -> "BotHarness":
+    """A clean harness: empty database, reset portal and no recorded call."""
+    await clean_session.commit()
+    bot_harness.reset()
+    bot_portal.reset()
+    return bot_harness

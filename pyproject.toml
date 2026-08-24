@@ -32,6 +32,7 @@ dev = [
     "pytest==9.1.1",
     "pytest-asyncio==1.4.0",
     "pytest-cov==7.1.0",
+    "pytest-timeout==2.4.0",
     "respx==0.23.1",
     "ruff==0.16.4",
 ]
@@ -94,6 +95,8 @@ asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "session"
 asyncio_default_test_loop_scope = "session"
 testpaths = ["tests"]
+# A hung database lock must fail the run instead of blocking it forever.
+timeout = 60
 filterwarnings = ["error::DeprecationWarning:app.*"]
 markers = [
     "live: opt-in non-destructive tests against the real portal (disabled in CI)",

@@ -518,7 +518,7 @@ async def _render_locations(
             event,
             texts.BOOK_NO_LOCATIONS,
             build_actions(
-                [[Entry(texts.BTN_SHOW_AVAILABILITY, callbacks.build(NS, A_FILTERS, draft.id))]],
+                [[Entry("➡️ Continua", callbacks.build(NS, A_FILTERS, draft.id))]],
                 back_target=callbacks.build(NS, A_RESULTS, 0, draft.id),
                 show_cancel=True,
             ),
