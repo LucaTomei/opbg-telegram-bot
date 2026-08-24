@@ -24,6 +24,7 @@ from app.db.repositories.accounts import (
 )
 from app.db.repositories.base import utc_now
 from app.db.repositories.watches import WatchRepository
+from app.domain.entities import CookieJar
 from app.domain.enums import (
     NotificationEventType,
     PortalAccountStatus,
@@ -231,7 +232,7 @@ class AccountService:
 
     async def _verify(
         self, session: AsyncSession, user: TelegramUser, email: str, password: str
-    ) -> tuple[dict[str, str], dict[str, object]]:
+    ) -> tuple[CookieJar, dict[str, object]]:
         credentials = PortalCredentials(email=email, password=password)
         try:
             return await self._sessions.verify_credentials(credentials, account_key=user.id.hex)

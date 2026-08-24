@@ -478,8 +478,78 @@ async def test_cookies_are_not_shared_between_sessions(settings: Settings) -> No
         client.session(account_key="a", cookies={"opbg-prenotazione": "first"}) as first,
         client.session(account_key="b") as second,
     ):
-        assert first.cookies_as_dict() == {"opbg-prenotazione": "first"}
-        assert second.cookies_as_dict() == {}
+        assert first.cookie_names() == {"opbg-prenotazione"}
+        assert second.cookie_names() == set()
+
+
+# --- cookie jar --------------------------------------------------------------
+async def test_the_same_cookie_name_on_two_paths_is_kept(settings: Settings) -> None:
+    """The portal sets XSRF-TOKEN on more than one path.
+
+    Exporting such a jar as a name/value mapping raises ``CookieConflict``, so
+    the export keeps every cookie with the scope it was set for.
+    """
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        response = default_handler(request)
+        # Two Set-Cookie headers with one name, as the portal actually sends.
+        response.headers = httpx.Headers(
+            [
+                *response.headers.multi_items(),
+                ("set-cookie", "XSRF-TOKEN=root; Path=/"),
+                ("set-cookie", "XSRF-TOKEN=scoped; Path=/appointments"),
+            ]
+        )
+        return response
+
+    client = build_client(settings, handler)
+    async with client.session(account_key="a") as portal_session:
+        await client.verify_session(portal_session)
+        exported = portal_session.export_cookies()
+
+    tokens = [record for record in exported if record["name"] == "XSRF-TOKEN"]
+    assert len(tokens) == 2
+    assert {record["value"] for record in tokens} == {"root", "scoped"}
+    assert {record["path"] for record in tokens} == {"/", "/appointments"}
+
+
+async def test_an_exported_jar_can_be_loaded_back(settings: Settings) -> None:
+    """A jar must survive a full round trip through storage."""
+    stored = [
+        {"name": "XSRF-TOKEN", "value": "root", "domain": "portal.test.invalid", "path": "/"},
+        {
+            "name": "XSRF-TOKEN",
+            "value": "scoped",
+            "domain": "portal.test.invalid",
+            "path": "/appointments",
+        },
+        {
+            "name": "opbg-prenotazione",
+            "value": "session",
+            "domain": "portal.test.invalid",
+            "path": "/",
+        },
+    ]
+    client = build_client(settings, default_handler)
+    async with client.session(account_key="a", cookies=stored) as portal_session:
+        exported = portal_session.export_cookies()
+        assert portal_session.cookie_names() == {"XSRF-TOKEN", "opbg-prenotazione"}
+
+    # The jar does not promise an order, so compare the records themselves.
+    key = lambda record: (record["name"], record["path"])  # noqa: E731
+    assert sorted(exported, key=key) == sorted(stored, key=key)
+
+
+async def test_a_jar_stored_in_the_old_flat_format_is_still_loaded(settings: Settings) -> None:
+    """An account connected before the jar carried scopes must keep working."""
+    client = build_client(settings, default_handler)
+    async with client.session(
+        account_key="a", cookies={"opbg-prenotazione": "session"}
+    ) as portal_session:
+        exported = portal_session.export_cookies()
+
+    assert [record["name"] for record in exported] == ["opbg-prenotazione"]
+    assert exported[0]["value"] == "session"
 
 
 async def test_contract_change_on_json_endpoint_is_typed(settings: Settings) -> None:

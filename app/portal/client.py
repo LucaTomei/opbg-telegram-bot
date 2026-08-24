@@ -19,6 +19,7 @@ import orjson
 
 from app.config import Settings
 from app.domain.entities import (
+    CookieJar,
     LoginResult,
     PdfDocument,
     PortalAppointment,
@@ -78,14 +79,44 @@ class PortalSession:
     def client(self) -> httpx.AsyncClient:
         return self._client
 
-    def cookies_as_dict(self) -> dict[str, str]:
-        return dict(self._client.cookies.items())
+    def export_cookies(self) -> list[dict[str, str]]:
+        """Every cookie in the jar, each with the scope it was set for.
 
-    def load_cookies(self, cookies: Mapping[str, str] | None) -> None:
+        Reading the jar as a name/value mapping is not possible: the portal
+        sets ``XSRF-TOKEN`` on more than one path and ``httpx`` raises
+        ``CookieConflict`` when a duplicated name is looked up.
+        """
+        return [
+            {
+                "name": cookie.name,
+                "value": cookie.value or "",
+                "domain": cookie.domain or "",
+                "path": cookie.path or "/",
+            }
+            for cookie in self._client.cookies.jar
+        ]
+
+    def cookie_names(self) -> set[str]:
+        return {cookie.name for cookie in self._client.cookies.jar}
+
+    def load_cookies(self, cookies: CookieJar | None) -> None:
         if not cookies:
             return
-        for name, value in cookies.items():
-            self._client.cookies.set(name, value)
+        if isinstance(cookies, Mapping):
+            # A jar stored before the scope was kept: load it as it is.
+            for name, value in cookies.items():
+                self._client.cookies.set(str(name), str(value))
+            return
+        for record in cookies:
+            name = record.get("name") or ""
+            if not name:
+                continue
+            self._client.cookies.set(
+                name,
+                record.get("value", ""),
+                domain=record.get("domain", ""),
+                path=record.get("path", "/"),
+            )
 
     def clear_cookies(self) -> None:
         self._client.cookies.clear()
@@ -114,7 +145,7 @@ class PortalClient:
     # --- session management ---------------------------------------------
     @asynccontextmanager
     async def session(
-        self, *, account_key: str, cookies: Mapping[str, str] | None = None
+        self, *, account_key: str, cookies: CookieJar | None = None
     ) -> AsyncIterator[PortalSession]:
         """Open an isolated session; cookies are never shared between accounts."""
         client = httpx.AsyncClient(
@@ -304,7 +335,7 @@ class PortalClient:
 
         metadata = await self.fetch_user_info(session)
         return LoginResult(
-            verified=True, cookies=session.cookies_as_dict(), account_metadata=metadata
+            verified=True, cookies=session.export_cookies(), account_metadata=metadata
         )
 
     async def verify_session(self, session: PortalSession) -> bool:

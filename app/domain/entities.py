@@ -6,11 +6,23 @@ are the shared vocabulary of the application layer.
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime, time
 from typing import Any
 
 from app.domain.enums import DateMode, LocationMode, SearchType, SortStrategy
+
+#: A cookie jar as it travels between the portal adapter and storage.
+#:
+#: Each record carries the scope of the cookie, not only its value: the portal
+#: sets ``XSRF-TOKEN`` on more than one path, and a flat name/value mapping
+#: cannot hold two cookies with the same name. Reading one back by name raises
+#: ``httpx.CookieConflict``.
+#:
+#: The mapping form is the previous, lossy format, still accepted when loading
+#: a jar stored before this became a list.
+type CookieJar = Sequence[Mapping[str, str]] | Mapping[str, str]
 
 
 @dataclass(frozen=True, slots=True)
@@ -223,5 +235,5 @@ class LoginResult:
     """Outcome of a portal login attempt."""
 
     verified: bool
-    cookies: dict[str, str]
+    cookies: CookieJar
     account_metadata: dict[str, Any] = field(default_factory=dict)

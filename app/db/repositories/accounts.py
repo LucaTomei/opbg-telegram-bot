@@ -11,6 +11,7 @@ from sqlalchemy import Select, select
 from app.db.base import blind_index_for
 from app.db.models.accounts import ConnectRateLimit, Patient, PortalAccount
 from app.db.repositories.base import BaseRepository, Page, utc_now
+from app.domain.entities import CookieJar
 from app.domain.enums import PortalAccountStatus
 
 ACCOUNT_TABLE = "portal_accounts"
@@ -96,7 +97,7 @@ class PortalAccountRepository(BaseRepository[PortalAccount]):
         await self.flush()
 
     async def store_session(
-        self, account: PortalAccount, *, cookies: dict[str, str], metadata: dict[str, object]
+        self, account: PortalAccount, *, cookies: CookieJar, metadata: dict[str, object]
     ) -> None:
         """Persist the encrypted cookie jar only after a verified response."""
         account.cookie_jar = cookies

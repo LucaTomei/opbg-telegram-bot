@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import Settings
 from app.db.models.accounts import PortalAccount
 from app.db.repositories.accounts import PortalAccountRepository
+from app.domain.entities import CookieJar
 from app.domain.enums import BreakerScope, PortalAccountStatus
 from app.domain.errors import (
     AccountSuspendedError,
@@ -75,7 +76,10 @@ class PortalSessionManager:
         await self._breaker.ensure_closed(session, scope=BreakerScope.GLOBAL)
         await self._breaker.ensure_closed(session, scope=BreakerScope.ACCOUNT, subject=subject)
 
-        stored_cookies = account.cookie_jar if isinstance(account.cookie_jar, dict) else None
+        stored = account.cookie_jar
+        # A list is the current scoped format; a dict is a jar stored before the
+        # scope was kept, and is still loadable.
+        stored_cookies = stored if isinstance(stored, list | dict) and stored else None
         async with self._client.session(
             account_key=subject, cookies=stored_cookies
         ) as portal_session:
@@ -164,9 +168,9 @@ class PortalSessionManager:
         """Store the refreshed cookie jar, but only for a still valid account."""
         if account.status in (PortalAccountStatus.LOCKED, PortalAccountStatus.REAUTH_REQUIRED):
             return
-        cookies = portal_session.cookies_as_dict()
+        cookies = portal_session.export_cookies()
         expected = self._settings.portal_session_cookie_name
-        if not cookies or expected not in cookies:
+        if expected not in portal_session.cookie_names():
             # Without the session cookie the jar is useless and would only cause
             # a failed verification on the next run.
             return
@@ -182,7 +186,7 @@ class PortalSessionManager:
 
     async def verify_credentials(
         self, credentials: PortalCredentials, *, account_key: str
-    ) -> tuple[dict[str, str], dict[str, object]]:
+    ) -> tuple[CookieJar, dict[str, object]]:
         """Log in with fresh credentials without touching any stored account."""
         async with self._client.session(account_key=account_key) as portal_session:
             result = await self._client.login(portal_session, credentials)
