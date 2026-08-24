@@ -92,16 +92,14 @@
 - pausa/disabilita/elimina durante lease;
 - quiet hours e notifiche critiche.
 
-## Web test
+## Test del collegamento account
 
-- ticket connect valido/scaduto/consumato;
-- CSRF, SameSite, CSP, no-store;
-- login riuscito e account cifrato;
+- richiesta guidata di etichetta, email e password;
+- cancellazione del messaggio con la password e avviso se fallisce;
+- password mai presente nello stato conversazione né in un messaggio in uscita;
 - password errata senza enumeration;
-- rate limit;
-- re-auth;
-- link PDF one-time: owner, expiry, single use;
-- nessun analytics/asset remoto.
+- rate limit e blocco dopo ripetuti fallimenti;
+- ri-autenticazione che ruota le credenziali e riattiva i monitoraggi.
 
 ## Contract test live opt-in
 
@@ -121,7 +119,7 @@ Prenotazione/disdetta live sono escluse dalla suite automatica. Se validate manu
 | ID | Criterio |
 | --- | --- |
 | AC-001 | Utente non invitato non accede a dati o funzioni. |
-| AC-002 | Utente invitato collega più account senza inviare password su Telegram. |
+| AC-002 | Utente invitato collega più account; il messaggio con la password viene cancellato subito e la password non resta in chiaro. |
 | AC-003 | Dati account A non sono visibili/operabili dall'utente B. |
 | AC-004 | Ricerca per prestazione mostra risultati reali selezionabili e paginati. |
 | AC-005 | Ricerca per medico mantiene il vincolo sul medico. |
@@ -135,7 +133,7 @@ Prenotazione/disdetta live sono escluse dalla suite automatica. Se validate manu
 | AC-013 | Monitor può essere modificato, duplicato, pausato, ripreso ed eliminato. |
 | AC-014 | Notifiche possono essere disabilitate indipendentemente dal watch. |
 | AC-015 | Appuntamenti vengono sincronizzati, disdetti e verificati. |
-| AC-016 | PDF valido viene consegnato e non resta persistito. |
+| AC-016 | PDF valido viene consegnato come documento Telegram e non resta persistito. |
 | AC-017 | Admin vede tutti gli oggetti previsti e ogni reveal/azione è auditata. |
 | AC-018 | Admin non può ottenere password/cookie/token in chiaro. |
 | AC-019 | Auth portale scaduta sospende solo account coinvolto e chiede re-auth. |

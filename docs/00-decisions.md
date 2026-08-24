@@ -17,8 +17,8 @@ Queste decisioni sono già state prese e non devono essere riaperte durante l'im
 | Telegram UX | Reply keyboard persistente per il menu e inline keyboard per selezioni/azioni. |
 | Amministrazione | L'admin vede e gestisce utenti, account, pazienti, monitoraggi, tentativi, appuntamenti, notifiche, errori e salute del sistema. Segreti mai visibili. |
 | Database | MySQL 8.4 LTS. Nessun Redis. |
-| Deploy | Tutto in Docker Compose. Un'unica immagine applicativa usata da servizi web, bot e worker. |
-| Login portale | Pagina HTTPS temporanea; mai email/password nei messaggi Telegram. |
+| Deploy | Tutto in Docker Compose. Un'unica immagine applicativa usata dai servizi bot e worker. Nessuna porta in ingresso. |
+| Login portale | Credenziali raccolte nella conversazione del bot. Il messaggio con la password viene cancellato subito dalla chat e la password non viene mai salvata nello stato conversazione. |
 | Integrazione | Client HTTP e parser HTML/JSON. Nessun browser headless salvo futura decisione documentata. |
 | Lingue | UI italiana; codice e commenti tecnici in inglese. |
 | Pagamento LAPI | La cattura osservata indica pagamento allo sportello. Il bot non gestisce carte o pagamenti. |

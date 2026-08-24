@@ -30,9 +30,9 @@ Da riga di comando:
 
 ```bash
 docker compose ps
-docker compose logs --tail=200 web bot worker
-curl -fsS https://$APP_DOMAIN/health/ready
-curl -fsS https://$APP_DOMAIN/version
+docker compose logs --tail=200 bot worker
+docker compose exec bot python -m app.cli healthcheck
+docker compose exec bot python -m app.cli --version
 ```
 
 `/health/ready` verifica configurazione, MySQL e revisione dello schema. Non
@@ -46,7 +46,7 @@ Gli amministratori arrivano esclusivamente da `TELEGRAM_ADMIN_IDS`.
 # 1. modifica TELEGRAM_ADMIN_IDS in .env
 docker compose up -d bot worker
 # oppure, senza riavviare:
-docker compose run --rm web bootstrap-admins
+docker compose run --rm bot bootstrap-admins
 ```
 
 Chi viene rimosso dalla variabile perde il ruolo al successivo avvio: il
@@ -65,7 +65,8 @@ di quell'account e invia una notifica. L'utente deve:
 
 1. aprire **Account** → l'account interessato;
 2. toccare **Aggiorna credenziali**;
-3. aprire il link HTTPS monouso e inserire email e password.
+3. inviare email e password quando il bot le chiede: il messaggio con la
+   password viene cancellato subito dalla chat.
 
 Al termine i monitoraggi sospesi per `REAUTH_REQUIRED` tornano attivi da soli.
 
@@ -117,7 +118,7 @@ I fixture devono restare sintetici: non copiare mai una cattura reale.
 Ogni errore mostrato all'utente riporta un codice. Per ritrovarlo:
 
 ```bash
-docker compose logs web bot worker | grep '"correlation_id":"<CODICE>"'
+docker compose logs bot worker | grep '"correlation_id":"<CODICE>"'
 ```
 
 Oppure da **Amministrazione → Audit**, filtrando per correlation ID. I log sono
@@ -153,7 +154,7 @@ APP_PREVIOUS_ENCRYPTION_KEYS=1:<chiave precedente>
 ```
 
 ```bash
-docker compose up -d web bot worker
+docker compose up -d bot worker
 ```
 
 I record vengono ri-cifrati con la nuova versione alla prima scrittura. La
@@ -164,10 +165,9 @@ La chiave di blind index (`APP_BLIND_INDEX_KEY`) **non è ruotabile a caldo**:
 cambiarla invalida tutti gli indici di ricerca. Va cambiata solo insieme a una
 ricostruzione degli indici.
 
-Anche `APP_SECRET_KEY` non è ruotabile a caldo: pepa gli hash di inviti,
-ticket di collegamento, link di download e nonce di conferma. Cambiarla
-invalida tutti i token già emessi; gli utenti dovranno richiedere un nuovo
-link o un nuovo invito.
+Anche `APP_SECRET_KEY` non è ruotabile a caldo: pepa gli hash dei codici di
+invito e dei nonce di conferma. Cambiarla invalida i codici già emessi; gli
+utenti dovranno richiedere un nuovo invito.
 
 ## Cancellazione di un utente o di un account
 
@@ -214,7 +214,7 @@ docker compose exec mysql mysql -uroot -p -e \
 ```
 
 Solo dopo il controllo si può decidere di puntare l'applicazione al database
-ripristinato, fermando prima `web`, `bot` e `worker`.
+ripristinato, fermando prima `bot` e `worker`.
 
 ## Aggiornamento e rollback
 
@@ -224,14 +224,14 @@ docker compose build
 docker compose run --rm migrate
 docker compose up -d
 docker compose ps
-curl -fsS https://$APP_DOMAIN/health/ready
+docker compose exec bot python -m app.cli healthcheck
 ```
 
 Rollback applicativo: ripristinare l'immagine precedente e riavviare. Il
 downgrade dello schema esiste ma **cancella le tabelle**:
 
 ```bash
-docker compose run --rm --entrypoint sh web -c 'python -m app.cli downgrade -1'
+docker compose run --rm --entrypoint sh bot -c 'python -m app.cli downgrade -1'
 ```
 
 Va usato solo su un ambiente ricostruibile o dopo un restore verificato.

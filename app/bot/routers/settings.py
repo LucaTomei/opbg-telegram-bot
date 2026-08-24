@@ -16,7 +16,7 @@ from app.bot.presenters.formatting import escape
 from app.bot.routers.common import acknowledge, render, send_new
 from app.composition import Container
 from app.db.models.users import TelegramUser
-from app.domain.enums import ConfirmationAction, PdfDeliveryMode
+from app.domain.enums import ConfirmationAction
 from app.domain.errors import ValidationError
 from app.logging import get_logger
 
@@ -27,7 +27,6 @@ NS = callbacks.SETTINGS
 A_ROOT = "root"
 A_NOTIF = "notif"
 A_QUIET = "quiet"
-A_PDF = "pdf"
 A_PAGE = "psize"
 A_SLOTS = "slots"
 A_PRIVACY = "priv"
@@ -50,11 +49,6 @@ def _summary(user: TelegramUser) -> str:
         if user.quiet_hours_start and user.quiet_hours_end
         else "non impostati"
     )
-    pdf = (
-        "documento Telegram"
-        if user.pdf_delivery_mode is PdfDeliveryMode.TELEGRAM
-        else "link monouso"
-    )
     return "\n".join(
         [
             texts.SETTINGS_TITLE,
@@ -64,7 +58,6 @@ def _summary(user: TelegramUser) -> str:
             + ("attive" if user.notifications_enabled else "disattivate")
             + "</b>",
             f"Orari silenziosi: <b>{quiet}</b>",
-            f"Promemoria PDF: <b>{pdf}</b>",
             f"Voci per pagina: <b>{user.page_size}</b>",
             f"Proposte massime: <b>{user.max_slots_shown}</b>",
             f"Informativa accettata: <b>{user.consent_version or 'non accettata'}</b>",
@@ -84,10 +77,7 @@ def _root_keyboard(user: TelegramUser) -> object:
                 ),
                 Entry("🌙 Orari silenziosi", callbacks.build(NS, A_QUIET)),
             ],
-            [
-                Entry("📄 Promemoria PDF", callbacks.build(NS, A_PDF)),
-                Entry("🔢 Voci per pagina", callbacks.build(NS, A_PAGE)),
-            ],
+            [Entry("🔢 Voci per pagina", callbacks.build(NS, A_PAGE))],
             [
                 Entry("📋 Proposte massime", callbacks.build(NS, A_SLOTS)),
                 Entry("🔒 Privacy", callbacks.build(NS, A_PRIVACY)),
@@ -165,43 +155,6 @@ async def apply_quiet_hours(
     await state.clear()
     await message.answer(texts.SETTINGS_QUIET_SET)
     await _render_root(message, user)
-
-
-@router.callback_query(F.data.startswith(f"{NS}|{A_PDF}"))
-async def choose_pdf_mode(
-    query: CallbackQuery, session: AsyncSession, container: Container, user: TelegramUser
-) -> None:
-    await acknowledge(query)
-    data = callbacks.parse(query.data)
-    choice = data.arg(0)
-    if choice in {mode.value for mode in PdfDeliveryMode}:
-        await container.users.set_pdf_mode(session, user, mode=PdfDeliveryMode(choice))
-        await send_new(query, texts.SETTINGS_SAVED)
-        await _render_root(query, user)
-        return
-    await render(
-        query,
-        texts.SETTINGS_PDF_MODE,
-        build_actions(
-            [
-                [
-                    Entry(
-                        ("✅ " if user.pdf_delivery_mode is PdfDeliveryMode.TELEGRAM else "")
-                        + texts.SETTINGS_PDF_TELEGRAM,
-                        callbacks.build(NS, A_PDF, PdfDeliveryMode.TELEGRAM.value),
-                    )
-                ],
-                [
-                    Entry(
-                        ("✅ " if user.pdf_delivery_mode is PdfDeliveryMode.ONE_TIME_LINK else "")
-                        + texts.SETTINGS_PDF_LINK,
-                        callbacks.build(NS, A_PDF, PdfDeliveryMode.ONE_TIME_LINK.value),
-                    )
-                ],
-            ],
-            back_target=callbacks.build(NS, A_ROOT),
-        ),
-    )
 
 
 @router.callback_query(F.data.startswith(f"{NS}|{A_PAGE}"))

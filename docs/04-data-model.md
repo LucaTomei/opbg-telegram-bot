@@ -24,7 +24,6 @@ Usare migrazioni Alembic, InnoDB, `utf8mb4`, UTC nel database e conversione Euro
 - `timezone`
 - `notifications_enabled`
 - `quiet_hours_start`, `quiet_hours_end`
-- `pdf_delivery_mode`
 - `consent_version`, `consented_at`
 - timestamps/version
 
@@ -71,16 +70,6 @@ Unique `(telegram_user_id, email_blind_index)` tra record non eliminati.
 - timestamps/version
 
 Unique `(portal_account_id, external_tax_code_blind_index)`.
-
-### `connect_tickets`
-
-- `id`, `telegram_user_id`
-- `token_hash` unique
-- `csrf_hash`
-- `purpose`: `CONNECT|REAUTH`
-- optional `portal_account_id`
-- `expires_at`, `consumed_at`
-- creation metadata redatta
 
 ### `conversation_states`
 

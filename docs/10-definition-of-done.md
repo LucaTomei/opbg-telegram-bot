@@ -1,12 +1,13 @@
 # Definition of Done
 
-Il progetto è completo soltanto quando tutte le caselle applicabili sono verificate.
+Criteri di completezza del progetto. Lo stato verificato è in
+[`IMPLEMENTATION_STATUS.md`](IMPLEMENTATION_STATUS.md).
 
 ## Prodotto
 
 - [ ] Invito, consenso e ruoli completi.
 - [ ] Più utenti e più account per utente isolati.
-- [ ] Collegamento/re-auth HTTPS sicuro.
+- [ ] Collegamento e ri-autenticazione dentro il bot, con cancellazione del messaggio.
 - [ ] Pazienti sincronizzati e selezionabili.
 - [ ] Ricerca LAPI per prestazione.
 - [ ] Ricerca LAPI per medico specifico.
@@ -21,7 +22,7 @@ Il progetto è completo soltanto quando tutte le caselle applicabili sono verifi
 
 ## Sicurezza
 
-- [ ] Nessuna password via Telegram.
+- [ ] Password mai persistita in chiaro né lasciata in chat.
 - [ ] Dati sensibili cifrati e blind index corretti.
 - [ ] Segreti e HAR esclusi da Git/Docker context.
 - [ ] Callback autorizzati e idempotenti.

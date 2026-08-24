@@ -64,6 +64,7 @@ class SystemStatus:
 
     app_version: str
     schema_version: str
+    environment: str
     users_by_status: dict[str, int]
     accounts_total: int
     accounts_needing_reauth: int
@@ -524,6 +525,7 @@ class AdminService:
         return SystemStatus(
             app_version=APP_VERSION,
             schema_version=SCHEMA_VERSION,
+            environment=self._settings.app_env,
             users_by_status={key.value: value for key, value in by_status.items()},
             accounts_total=accounts_page.total,
             accounts_needing_reauth=reauth_page.total,

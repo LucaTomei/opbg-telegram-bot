@@ -48,8 +48,5 @@ tmp/
 data/
 Makefile
 README.md
-SETUP_MACOS.md
-PROMPT_CLAUDE_CODE.md
-CLAUDE.md
 compose*.yaml
 requirements-dev.lock

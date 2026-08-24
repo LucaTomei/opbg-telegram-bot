@@ -27,7 +27,11 @@ class HeartbeatPublisher:
         await HeartbeatRepository(session).beat(
             worker_id=self.worker_id,
             started_at=self.started_at,
-            metadata={"version": APP_VERSION, **(metadata or {})},
+            metadata={
+                "version": APP_VERSION,
+                "environment": self.settings.app_env,
+                **(metadata or {}),
+            },
         )
 
 

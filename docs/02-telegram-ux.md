@@ -32,7 +32,7 @@ Comandi minimi: `/start`, `/menu`, `/cancel`, `/help`, `/privacy`, `/status`. Co
 ### Schermata 1 — Account
 
 - Elenco account attivi con stato autenticazione.
-- `➕ Collega account` apre la pagina HTTPS one-time.
+- `➕ Collega account` avvia la richiesta guidata di etichetta, email e password.
 - Se un solo account attivo, può essere pre-selezionato ma il riepilogo deve mostrarlo.
 
 ### Schermata 2 — Paziente
@@ -136,7 +136,7 @@ Disdetta:
 - sincronizza pazienti;
 - test accesso;
 - rinomina;
-- aggiorna credenziali tramite HTTPS;
+- aggiorna credenziali;
 - disabilita;
 - rimuovi con indicazione dei monitoraggi che verranno sospesi.
 
@@ -145,7 +145,6 @@ Disdetta:
 - timezone informativa;
 - quiet hours;
 - notifiche globali;
-- modalità PDF: documento Telegram o link one-time;
 - preferenze pagina/numero slot;
 - privacy e consensi;
 - elimina tutti i propri dati.

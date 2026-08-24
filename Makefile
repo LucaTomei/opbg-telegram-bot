@@ -109,7 +109,7 @@ down: ## Stop the stack, keeping the data volume
 
 .PHONY: logs
 logs: ## Tail the application logs
-	$(COMPOSE) logs --tail=200 -f web bot worker
+	$(COMPOSE) logs --tail=200 -f bot worker
 
 .PHONY: ps
 ps: ## Show the container status

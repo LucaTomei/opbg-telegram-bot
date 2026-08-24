@@ -45,7 +45,7 @@ Ridurre il lavoro manuale necessario per trovare e gestire appuntamenti LAPI sul
 
 ### Account del portale
 
-- collegare account tramite link HTTPS one-time;
+- collegare account inserendo le credenziali nella conversazione del bot;
 - assegnare un'etichetta libera, ad esempio “Mio account” o “Famiglia Rossi”;
 - testare accesso;
 - sincronizzare pazienti;

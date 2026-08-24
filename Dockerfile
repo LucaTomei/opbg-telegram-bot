@@ -55,4 +55,4 @@ USER app
 ENV PYTHONPATH=${APP_HOME}
 
 ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/entrypoint.sh"]
-CMD ["web"]
+CMD ["bot"]

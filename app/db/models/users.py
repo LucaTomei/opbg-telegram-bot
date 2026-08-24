@@ -31,7 +31,7 @@ from app.db.base import (
     encrypted_text,
 )
 from app.db.types import Ciphertext, UuidBinary
-from app.domain.enums import PdfDeliveryMode, UserRole, UserStatus
+from app.domain.enums import UserRole, UserStatus
 
 if TYPE_CHECKING:
     from app.db.models.accounts import PortalAccount
@@ -59,11 +59,6 @@ class TelegramUser(UuidPkMixin, TimestampMixin, VersionMixin, SoftDeleteMixin, B
     notifications_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     quiet_hours_start: Mapped[time | None] = mapped_column(Time, default=None)
     quiet_hours_end: Mapped[time | None] = mapped_column(Time, default=None)
-    pdf_delivery_mode: Mapped[PdfDeliveryMode] = mapped_column(
-        SAEnum(PdfDeliveryMode, native_enum=False, length=24),
-        default=PdfDeliveryMode.TELEGRAM,
-        nullable=False,
-    )
     page_size: Mapped[int] = mapped_column(Integer, default=6, nullable=False)
     max_slots_shown: Mapped[int] = mapped_column(Integer, default=40, nullable=False)
     consent_version: Mapped[str | None] = mapped_column(String(16), default=None)

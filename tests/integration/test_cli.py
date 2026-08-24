@@ -12,13 +12,11 @@ from app import cli
 from app.composition import Container
 from app.config import Settings
 from app.db.models.users import TelegramUser
-from app.db.repositories.accounts import ConnectTicketRepository
 from app.db.repositories.base import utc_now
 from app.db.repositories.system import BackupStatusRepository
 from app.db.repositories.users import UserRepository
 from app.db.session import Database
-from app.domain.enums import ConnectTicketPurpose, UserRole
-from app.security.tokens import generate_token
+from app.domain.enums import UserRole
 
 
 @pytest.fixture(autouse=True)
@@ -73,20 +71,17 @@ async def test_bootstrap_admins_is_visible_in_the_database(
 async def test_cleanup_removes_expired_records(
     clean_session: AsyncSession, database: Database, user: TelegramUser
 ) -> None:
-    tickets = ConnectTicketRepository(clean_session)
-    ticket = await tickets.create(
-        user_id=user.id,
-        token=generate_token(),
-        purpose=ConnectTicketPurpose.CONNECT,
-        ttl_minutes=1,
-    )
-    ticket.expires_at = utc_now() - timedelta(days=2)
+    from app.db.repositories.conversations import ConversationStateRepository
+
+    states = ConversationStateRepository(clean_session)
+    record = await states.set_state(user.id, state="stale", payload=None, ttl_seconds=60)
+    record.expires_at = utc_now() - timedelta(days=2)
     await clean_session.commit()
 
     assert await cli.run_command(["cleanup"]) == 0
 
     async with database.read_session() as session:
-        assert await ConnectTicketRepository(session).get(ticket.id) is None
+        assert await ConversationStateRepository(session).get_for_user(user.id) is None
 
 
 async def test_record_backup_stores_the_outcome(

@@ -8,31 +8,27 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.composition import Container
 from app.db.models.accounts import PortalAccount
 from app.db.models.users import TelegramUser
-from app.db.repositories.accounts import (
-    ConnectTicketRepository,
-    PatientRepository,
-    PortalAccountRepository,
-)
+from app.db.repositories.accounts import PatientRepository, PortalAccountRepository
 from app.db.repositories.base import utc_now
 from app.db.repositories.notifications import NotificationRepository
+from app.db.repositories.users import UserRepository
 from app.db.repositories.watches import WatchRepository
 from app.db.session import Database
 from app.domain.enums import (
-    ConnectTicketPurpose,
     NotificationEventType,
     PortalAccountStatus,
     UserStatus,
     WatchStatus,
 )
 from app.domain.errors import (
-    AlreadyConsumedError,
     AuthenticationFailed,
     ConflictError,
     ConsentRequiredError,
-    ExpiredError,
     QuotaExceededError,
     RateLimitedError,
+    ValidationError,
 )
+from tests.support.factories import make_account, make_watch
 from tests.support.portal import VALID_EMAIL, VALID_PASSWORD, FakePortal
 
 OTHER_EMAIL = "secondo.utente@example.invalid"
@@ -46,15 +42,13 @@ async def connect_account(
     email: str = VALID_EMAIL,
     label: str = "Account principale",
 ) -> PortalAccount:
-    link = await container.accounts.create_connect_link(session, user)
-    tickets = ConnectTicketRepository(session)
-    ticket = await tickets.get_by_token(link.url.rsplit("/", 1)[-1])
-    assert ticket is not None
-    return await container.accounts.complete_connection(
-        session, ticket=ticket, label=label, email=email, password=VALID_PASSWORD
+    await container.accounts.ensure_can_connect(session, user)
+    return await container.accounts.connect(
+        session, user, label=label, email=email, password=VALID_PASSWORD
     )
 
 
+# --- connection --------------------------------------------------------------
 async def test_connection_stores_encrypted_credentials_and_patients(
     clean_session: AsyncSession, container: Container, user: TelegramUser
 ) -> None:
@@ -69,85 +63,79 @@ async def test_connection_stores_encrypted_credentials_and_patients(
     }
 
 
-async def test_the_ticket_is_consumed_after_use(
+async def test_the_password_is_never_stored_in_clear(
     clean_session: AsyncSession, container: Container, user: TelegramUser
 ) -> None:
-    link = await container.accounts.create_connect_link(session=clean_session, user=user)
-    token = link.url.rsplit("/", 1)[-1]
-    tickets = ConnectTicketRepository(clean_session)
-    ticket = await tickets.get_by_token(token)
-    assert ticket is not None
-    await container.accounts.complete_connection(
-        session=clean_session,
-        ticket=ticket,
-        label="Account",
-        email=VALID_EMAIL,
-        password=VALID_PASSWORD,
-    )
-    with pytest.raises(AlreadyConsumedError):
-        await container.accounts.load_ticket(clean_session, token)
-
-
-async def test_expired_ticket_is_refused(
-    clean_session: AsyncSession, container: Container, user: TelegramUser
-) -> None:
-    link = await container.accounts.create_connect_link(clean_session, user)
-    token = link.url.rsplit("/", 1)[-1]
-    tickets = ConnectTicketRepository(clean_session)
-    ticket = await tickets.get_by_token(token)
-    assert ticket is not None
-    ticket.expires_at = utc_now().replace(year=2020)
-    await tickets.flush()
-    with pytest.raises(ExpiredError):
-        await container.accounts.load_ticket(clean_session, token)
+    account = await connect_account(clean_session, container, user)
+    assert account.password_ciphertext is not None
+    assert VALID_PASSWORD.encode() not in account.password_ciphertext
+    assert account.password == VALID_PASSWORD
 
 
 async def test_wrong_credentials_do_not_create_an_account(
     clean_session: AsyncSession, container: Container, user: TelegramUser
 ) -> None:
-    link = await container.accounts.create_connect_link(clean_session, user)
-    tickets = ConnectTicketRepository(clean_session)
-    ticket = await tickets.get_by_token(link.url.rsplit("/", 1)[-1])
-    assert ticket is not None
     with pytest.raises(AuthenticationFailed):
-        await container.accounts.complete_connection(
-            session=clean_session,
-            ticket=ticket,
+        await container.accounts.connect(
+            clean_session,
+            user,
             label="Account",
             email=VALID_EMAIL,
             password="password-sbagliata",
         )
     assert await PortalAccountRepository(clean_session).count_for_user(user.id) == 0
-    assert ticket.failure_count == 1
 
 
 async def test_the_same_account_cannot_be_connected_twice(
     clean_session: AsyncSession, container: Container, user: TelegramUser
 ) -> None:
     await connect_account(clean_session, container, user)
-    link = await container.accounts.create_connect_link(clean_session, user)
-    ticket = await ConnectTicketRepository(clean_session).get_by_token(link.url.rsplit("/", 1)[-1])
-    assert ticket is not None
     with pytest.raises(ConflictError):
-        await container.accounts.complete_connection(
-            session=clean_session,
-            ticket=ticket,
+        await container.accounts.connect(
+            clean_session,
+            user,
             label="Duplicato",
             email=VALID_EMAIL.upper(),
             password=VALID_PASSWORD,
         )
 
 
+@pytest.mark.parametrize("email", ["senza-chiocciola", "con spazio@example.invalid", ""])
+async def test_a_malformed_email_is_refused(
+    clean_session: AsyncSession, container: Container, user: TelegramUser, email: str
+) -> None:
+    with pytest.raises(ValidationError):
+        await container.accounts.connect(
+            clean_session, user, label="Account", email=email, password=VALID_PASSWORD
+        )
+
+
+async def test_an_empty_label_is_refused(
+    clean_session: AsyncSession, container: Container, user: TelegramUser
+) -> None:
+    with pytest.raises(ValidationError):
+        await container.accounts.connect(
+            clean_session, user, label="   ", email=VALID_EMAIL, password=VALID_PASSWORD
+        )
+
+
+async def test_an_empty_password_is_refused(
+    clean_session: AsyncSession, container: Container, user: TelegramUser
+) -> None:
+    with pytest.raises(ValidationError):
+        await container.accounts.connect(
+            clean_session, user, label="Account", email=VALID_EMAIL, password=""
+        )
+
+
 async def test_consent_is_required_before_connecting(
     clean_session: AsyncSession, container: Container
 ) -> None:
-    from app.db.repositories.users import UserRepository
-
     pending = await UserRepository(clean_session).create(
         telegram_id=999100, status=UserStatus.PENDING_CONSENT
     )
     with pytest.raises(ConsentRequiredError):
-        await container.accounts.create_connect_link(clean_session, pending)
+        await container.accounts.ensure_can_connect(clean_session, pending)
 
 
 async def test_the_account_quota_is_enforced(
@@ -164,11 +152,15 @@ async def test_the_account_quota_is_enforced(
     )
     await connect_account(clean_session, limited, user)
     with pytest.raises(QuotaExceededError):
-        await limited.accounts.create_connect_link(clean_session, user)
+        await limited.accounts.ensure_can_connect(clean_session, user)
 
 
-async def test_rate_limit_blocks_repeated_attempts(
-    clean_session: AsyncSession, container: Container, database: Database, portal: FakePortal
+async def test_repeated_connection_attempts_are_rate_limited(
+    clean_session: AsyncSession,
+    container: Container,
+    user: TelegramUser,
+    database: Database,
+    portal: FakePortal,
 ) -> None:
     from tests.support.portal import build_container, make_settings
 
@@ -176,17 +168,54 @@ async def test_rate_limit_blocks_repeated_attempts(
         make_settings(container.settings, connect_rate_limit_per_hour=2), database, portal
     )
     for _ in range(2):
-        await limited.accounts.enforce_connect_rate_limit(
-            clean_session, scope="ip", subject="203.0.113.10"
-        )
+        await limited.accounts.ensure_can_connect(clean_session, user)
     with pytest.raises(RateLimitedError):
-        await limited.accounts.enforce_connect_rate_limit(
-            clean_session, scope="ip", subject="203.0.113.10"
+        await limited.accounts.ensure_can_connect(clean_session, user)
+
+
+async def test_repeated_failures_lock_the_flow_and_warn_the_user(
+    clean_session: AsyncSession,
+    container: Container,
+    user: TelegramUser,
+    database: Database,
+    portal: FakePortal,
+) -> None:
+    """Wrong passwords must not be retried indefinitely."""
+    from tests.support.portal import build_container, make_settings
+
+    strict = build_container(
+        make_settings(container.settings, connect_max_failures=2), database, portal
+    )
+    for _ in range(2):
+        with pytest.raises(AuthenticationFailed):
+            await strict.accounts.connect(
+                clean_session,
+                user,
+                label="Account",
+                email=VALID_EMAIL,
+                password="password-sbagliata",
+            )
+    with pytest.raises(RateLimitedError):
+        await strict.accounts.connect(
+            clean_session,
+            user,
+            label="Account",
+            email=VALID_EMAIL,
+            password="password-sbagliata",
         )
+    events = await NotificationRepository(clean_session).list_for_user(
+        user.id, page=0, page_size=10
+    )
+    assert events.total == 1
+    assert events.items[0].event_type is NotificationEventType.REAUTH_REQUIRED
 
 
+# --- re-authentication --------------------------------------------------------
 async def test_reauthentication_rotates_the_credentials_and_resumes_watches(
-    clean_session: AsyncSession, container: Container, user: TelegramUser, portal: FakePortal
+    clean_session: AsyncSession,
+    container: Container,
+    user: TelegramUser,
+    portal: FakePortal,
 ) -> None:
     account = await connect_account(clean_session, container, user)
     accounts = PortalAccountRepository(clean_session)
@@ -194,28 +223,14 @@ async def test_reauthentication_rotates_the_credentials_and_resumes_watches(
     assert account.status is PortalAccountStatus.REAUTH_REQUIRED
 
     watches = WatchRepository(clean_session)
-    from tests.support.factories import make_watch
-
     watch = await make_watch(clean_session, user, account)
     watch.status = WatchStatus.PAUSED
     watch.completed_reason = "REAUTH_REQUIRED"
     await watches.flush()
 
-    link = await container.accounts.create_connect_link(
-        clean_session,
-        user,
-        purpose=ConnectTicketPurpose.REAUTH,
-        portal_account_id=account.id,
-    )
-    ticket = await ConnectTicketRepository(clean_session).get_by_token(link.url.rsplit("/", 1)[-1])
-    assert ticket is not None
     portal.valid_credentials = (OTHER_EMAIL, VALID_PASSWORD)
-    refreshed = await container.accounts.complete_connection(
-        session=clean_session,
-        ticket=ticket,
-        label="Account",
-        email=OTHER_EMAIL,
-        password=VALID_PASSWORD,
+    refreshed = await container.accounts.reauthenticate(
+        clean_session, user, account, email=OTHER_EMAIL, password=VALID_PASSWORD
     )
     assert refreshed.id == account.id
     assert refreshed.status is PortalAccountStatus.ACTIVE
@@ -226,12 +241,11 @@ async def test_reauthentication_rotates_the_credentials_and_resumes_watches(
     assert reloaded.status is WatchStatus.ACTIVE
 
 
+# --- management ---------------------------------------------------------------
 async def test_disabling_an_account_pauses_its_watches(
     clean_session: AsyncSession, container: Container, user: TelegramUser
 ) -> None:
     account = await connect_account(clean_session, container, user)
-    from tests.support.factories import make_watch
-
     watch = await make_watch(clean_session, user, account)
     affected = await container.accounts.set_enabled(clean_session, account, enabled=False)
     assert affected == 1
@@ -245,8 +259,6 @@ async def test_removing_an_account_erases_credentials_and_deletes_watches(
     clean_session: AsyncSession, container: Container, user: TelegramUser
 ) -> None:
     account = await connect_account(clean_session, container, user)
-    from tests.support.factories import make_watch
-
     watch = await make_watch(clean_session, user, account)
     removed = await container.accounts.remove(clean_session, account)
     assert removed == 1
@@ -257,7 +269,10 @@ async def test_removing_an_account_erases_credentials_and_deletes_watches(
 
 
 async def test_test_login_refreshes_the_session(
-    clean_session: AsyncSession, container: Container, user: TelegramUser, portal: FakePortal
+    clean_session: AsyncSession,
+    container: Container,
+    user: TelegramUser,
+    portal: FakePortal,
 ) -> None:
     account = await connect_account(clean_session, container, user)
     portal.session_expired = True
@@ -285,57 +300,12 @@ async def test_patient_sync_deactivates_missing_patients(
     assert reloaded.active is False
 
 
-async def test_a_ticket_is_locked_and_the_user_warned_after_repeated_failures(
-    clean_session: AsyncSession,
-    container: Container,
-    user: TelegramUser,
-    database: Database,
-    portal: FakePortal,
+async def test_an_account_cannot_be_opened_by_another_user(
+    clean_session: AsyncSession, container: Container, user: TelegramUser
 ) -> None:
-    """Repeated wrong passwords must burn the ticket and warn the user."""
-    from tests.support.portal import build_container, make_settings
+    from app.domain.errors import NotFoundError
 
-    strict = build_container(
-        make_settings(container.settings, connect_max_failures=2), database, portal
-    )
-    link = await strict.accounts.create_connect_link(clean_session, user)
-    token = link.url.rsplit("/", 1)[-1]
-
-    for _ in range(2):
-        ticket = await ConnectTicketRepository(clean_session).get_by_token(token)
-        assert ticket is not None
-        with pytest.raises(AuthenticationFailed):
-            await strict.accounts.complete_connection(
-                session=clean_session,
-                ticket=ticket,
-                label="Account",
-                email=VALID_EMAIL,
-                password="password-sbagliata",
-            )
-
-    with pytest.raises((RateLimitedError, AlreadyConsumedError)):
-        await strict.accounts.load_ticket(clean_session, token)
-
-    events = await NotificationRepository(clean_session).list_for_user(
-        user.id, page=0, page_size=10
-    )
-    assert events.total == 1
-    assert events.items[0].event_type is NotificationEventType.REAUTH_REQUIRED
-
-
-async def test_the_connect_link_is_rate_limited_per_user(
-    clean_session: AsyncSession,
-    container: Container,
-    user: TelegramUser,
-    database: Database,
-    portal: FakePortal,
-) -> None:
-    from tests.support.portal import build_container, make_settings
-
-    limited = build_container(
-        make_settings(container.settings, connect_rate_limit_per_hour=2), database, portal
-    )
-    for _ in range(2):
-        await limited.accounts.create_connect_link(clean_session, user)
-    with pytest.raises(RateLimitedError):
-        await limited.accounts.create_connect_link(clean_session, user)
+    account = await make_account(clean_session, user)
+    intruder = await UserRepository(clean_session).create(telegram_id=999200)
+    with pytest.raises(NotFoundError):
+        await container.accounts.require_account(clean_session, intruder, account.id)

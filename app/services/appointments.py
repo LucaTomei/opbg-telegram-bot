@@ -13,11 +13,7 @@ from app.config import Settings
 from app.db.models.accounts import Patient, PortalAccount
 from app.db.models.bookings import AppointmentCache
 from app.db.models.users import TelegramUser
-from app.db.repositories.accounts import (
-    DownloadTokenRepository,
-    PatientRepository,
-    PortalAccountRepository,
-)
+from app.db.repositories.accounts import PatientRepository, PortalAccountRepository
 from app.db.repositories.base import Page, utc_now
 from app.db.repositories.bookings import AppointmentRepository, CancellationAttemptRepository
 from app.domain.entities import PdfDocument, PortalAppointment
@@ -284,24 +280,3 @@ class AppointmentService:
                 appointment_id=appointment.portal_external_id,
                 max_bytes=self._settings.pdf_max_bytes,
             )
-
-    async def issue_download_link(
-        self,
-        session: AsyncSession,
-        *,
-        user: TelegramUser,
-        appointment: AppointmentCache,
-        issued_by_admin_id: uuid.UUID | None = None,
-    ) -> str:
-        """Create a single-use HTTPS link for the reminder PDF."""
-        from app.security.tokens import generate_token
-
-        token = generate_token()
-        await DownloadTokenRepository(session).create(
-            user_id=user.id,
-            appointment_id=appointment.id,
-            token=token,
-            ttl_minutes=self._settings.pdf_link_ttl_minutes,
-            issued_by_admin_id=issued_by_admin_id,
-        )
-        return self._settings.pdf_url(token)

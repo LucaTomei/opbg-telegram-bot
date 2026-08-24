@@ -16,7 +16,7 @@ from app.db.models.users import (
     UserSettingsAudit,
 )
 from app.db.repositories.base import BaseRepository, Page, utc_now
-from app.domain.enums import PdfDeliveryMode, UserRole, UserStatus
+from app.domain.enums import UserRole, UserStatus
 from app.security.tokens import hash_invite_code
 
 
@@ -35,7 +35,6 @@ class UserRepository(BaseRepository[TelegramUser]):
         role: UserRole = UserRole.USER,
         status: UserStatus = UserStatus.PENDING_CONSENT,
         timezone: str = "Europe/Rome",
-        pdf_delivery_mode: PdfDeliveryMode = PdfDeliveryMode.TELEGRAM,
         page_size: int = 6,
         max_slots_shown: int = 40,
     ) -> TelegramUser:
@@ -45,7 +44,6 @@ class UserRepository(BaseRepository[TelegramUser]):
             role=role,
             status=status,
             timezone=timezone,
-            pdf_delivery_mode=pdf_delivery_mode,
             page_size=page_size,
             max_slots_shown=max_slots_shown,
         )
@@ -56,7 +54,6 @@ class UserRepository(BaseRepository[TelegramUser]):
         telegram_id: int,
         *,
         timezone: str,
-        pdf_delivery_mode: PdfDeliveryMode = PdfDeliveryMode.TELEGRAM,
         page_size: int = 6,
         max_slots_shown: int = 40,
     ) -> TelegramUser:
@@ -68,7 +65,6 @@ class UserRepository(BaseRepository[TelegramUser]):
                 role=UserRole.ADMIN,
                 status=UserStatus.PENDING_CONSENT,
                 timezone=timezone,
-                pdf_delivery_mode=pdf_delivery_mode,
                 page_size=page_size,
                 max_slots_shown=max_slots_shown,
             )

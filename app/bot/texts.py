@@ -75,7 +75,7 @@ CONSENT_TEXT: Final[str] = (
     "• Il bot accede al portale di prenotazione <b>per tuo conto</b>, usando "
     "credenziali che fornisci tu tramite una pagina HTTPS temporanea.\n"
     "• Email, password, cookie di sessione e identificativi dei pazienti sono "
-    "<b>cifrati</b> nel database. Le password non transitano mai su Telegram.\n"
+    "<b>cifrati</b> nel database.\n"
     "• Vengono trattati dati relativi a prestazioni sanitarie: le chat Telegram "
     "<b>non sono cifrate end-to-end</b>.\n"
     "• L'amministratore del servizio può vedere i dati necessari alla gestione; "
@@ -96,9 +96,9 @@ CONSENT_ACCEPTED: Final[str] = (
 
 HELP_TEXT: Final[str] = (
     "<b>Guida rapida</b>\n\n"
-    "<b>1. Collega un account</b> — <i>Account → Collega account</i>. "
-    "Si apre una pagina HTTPS temporanea dove inserire email e password del "
-    "portale. Le credenziali non vanno mai scritte in chat.\n\n"
+    "<b>1. Collega un account</b> — <i>Account → Collega account</i>: "
+    "il bot chiede nome, email e password del portale. Il messaggio con la "
+    "password viene cancellato subito dalla chat.\n\n"
     "<b>2. Prenota</b> — <i>Prenota</i>: scegli account, paziente, prestazione "
     "o medico, sedi e filtri, poi conferma due volte.\n\n"
     "<b>3. Monitora</b> — se non c'è disponibilità puoi creare un monitoraggio "
@@ -117,6 +117,7 @@ PRIVACY_SHORT: Final[str] = (
     "<b>Privacy</b>\n\n"
     "Dati cifrati a riposo: email, password, cookie, identificativi dei "
     "pazienti e contenuti sensibili delle conversazioni.\n"
+    "Il messaggio con la password viene cancellato dalla chat appena letto.\n"
     "Password, cookie e token non sono mai mostrati, nemmeno all'amministratore.\n"
     "Le notifiche e i PDF vengono inviati solo alla tua chat privata.\n"
     "I promemoria PDF non vengono conservati sul server.\n\n"
@@ -129,12 +130,38 @@ ACCOUNTS_EMPTY: Final[str] = (
     "Non hai ancora collegato nessun account del portale.\nUsa <b>Collega account</b> per iniziare."
 )
 ACCOUNTS_TITLE: Final[str] = "<b>Account del portale</b>\nSeleziona un account per gestirlo."
-ACCOUNT_CONNECT_LINK: Final[str] = (
-    "Apri questo link sicuro per inserire le credenziali del portale.\n"
-    "È valido una sola volta e scade tra <b>{minutes} minuti</b>.\n\n"
-    "Non inviare mai la password in chat."
+ACCOUNT_CONNECT_BUTTON: Final[str] = "🔐 Collega account"
+ACCOUNT_ASK_LABEL: Final[str] = (
+    "<b>Collegamento account</b>\n\n"
+    "Dai un nome a questo account, per riconoscerlo nell'elenco.\n"
+    "Esempio: <i>Mio account</i> oppure <i>Famiglia Rossi</i>."
 )
-ACCOUNT_CONNECT_BUTTON: Final[str] = "🔐 Apri pagina sicura"
+ACCOUNT_ASK_EMAIL: Final[str] = "Ora invia l'<b>email</b> con cui accedi al portale."
+ACCOUNT_ASK_PASSWORD: Final[str] = (
+    "Infine invia la <b>password</b> del portale.\n\n"
+    "🔒 Il messaggio con la password viene <b>cancellato subito</b> dalla chat "
+    "appena letto, e la password viene salvata cifrata: non resta in chiaro da "
+    "nessuna parte. Se la cancellazione non riesce te lo segnalo, così puoi "
+    "eliminarla a mano."
+)
+ACCOUNT_CREDENTIALS_DELETED: Final[str] = "🔒 Messaggio con la password eliminato."
+ACCOUNT_CREDENTIALS_NOT_DELETED: Final[str] = (
+    "⚠️ Non sono riuscito a eliminare il messaggio con la password: cancellalo tu dalla chat."
+)
+ACCOUNT_CONNECTING: Final[str] = "Verifico le credenziali sul portale…"
+ACCOUNT_CONNECTED: Final[str] = (
+    "✅ Account <b>{label}</b> collegato.\nPazienti sincronizzati: <b>{patients}</b>."
+)
+ACCOUNT_CONNECT_FAILED: Final[str] = (
+    "Credenziali non valide oppure account non disponibile. "
+    "Controlla i dati e riprova da <b>Account</b>."
+)
+ACCOUNT_REAUTH_START: Final[str] = (
+    "<b>Aggiorna credenziali</b>\n\nInvia l'<b>email</b> del portale per l'account <b>{label}</b>."
+)
+ACCOUNT_REAUTH_DONE: Final[str] = (
+    "✅ Credenziali aggiornate. I monitoraggi sospesi sono stati riattivati."
+)
 ACCOUNT_STATUS_LABELS: Final[dict[str, str]] = {
     "ACTIVE": "attivo",
     "DISABLED": "disabilitato",
@@ -352,9 +379,6 @@ APPOINTMENT_CANCEL_AMBIGUOUS: Final[str] = (
     "Codice di riferimento: <code>{cid}</code>"
 )
 APPOINTMENT_PDF_SENT: Final[str] = "Promemoria inviato."
-APPOINTMENT_PDF_LINK: Final[str] = (
-    "Scarica il promemoria con questo link monouso. Scade tra <b>{minutes} minuti</b>."
-)
 APPOINTMENT_PDF_UNAVAILABLE: Final[str] = "Il promemoria non è disponibile per questo appuntamento."
 BTN_CANCEL_APPOINTMENT: Final[str] = "🗑 Disdici"
 BTN_APPOINTMENT_DETAILS: Final[str] = "🔍 Dettagli"
@@ -372,9 +396,6 @@ SETTINGS_QUIET_ASK: Final[str] = (
 )
 SETTINGS_QUIET_SET: Final[str] = "Orari silenziosi aggiornati."
 SETTINGS_QUIET_OFF: Final[str] = "Orari silenziosi disattivati."
-SETTINGS_PDF_MODE: Final[str] = "<b>Consegna promemoria</b>\nScegli come ricevere il PDF."
-SETTINGS_PDF_TELEGRAM: Final[str] = "📄 Documento Telegram"
-SETTINGS_PDF_LINK: Final[str] = "🔗 Link monouso"
 SETTINGS_PAGE_SIZE_ASK: Final[str] = "Quante voci per pagina? (da 3 a 20)"
 SETTINGS_MAX_SLOTS_ASK: Final[str] = "Quante proposte mostrare al massimo? (da 1 a 200)"
 SETTINGS_SAVED: Final[str] = "Impostazione salvata."

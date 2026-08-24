@@ -52,7 +52,6 @@ def _test_settings_env() -> dict[str, str]:
         "APP_SECRET_KEY": base64.urlsafe_b64encode(bytes(range(64, 96))).decode(),
         "APP_ENCRYPTION_KEY": key,
         "APP_BLIND_INDEX_KEY": blind,
-        "PUBLIC_BASE_URL": "https://bot.test.invalid",
         "TELEGRAM_BOT_TOKEN": "424242:SYNTHETIC-TOKEN-NOT-A-REAL-BOT",
         "TELEGRAM_BOT_USERNAME": "opbg_test_bot",
         "TELEGRAM_ADMIN_IDS": "1001",
@@ -117,9 +116,15 @@ async def engine() -> AsyncIterator[AsyncEngine]:
     engine = create_async_engine(url, pool_pre_ping=True, future=True)
     try:
         async with engine.begin() as connection:
+            # Drop whatever the database holds, not only the tables the current
+            # models declare: a table removed by a migration would otherwise
+            # survive and make the next upgrade fail.
             await connection.exec_driver_sql("SET FOREIGN_KEY_CHECKS = 0")
-            await connection.run_sync(Base.metadata.drop_all)
-            await connection.exec_driver_sql("DROP TABLE IF EXISTS alembic_version")
+            rows = await connection.exec_driver_sql(
+                "SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE()"
+            )
+            for (table,) in rows.all():
+                await connection.exec_driver_sql(f"DROP TABLE IF EXISTS `{table}`")
             await connection.exec_driver_sql("SET FOREIGN_KEY_CHECKS = 1")
         await asyncio.to_thread(_upgrade_schema, url)
     except Exception as exc:  # pragma: no cover - environment dependent

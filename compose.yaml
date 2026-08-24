@@ -15,7 +15,6 @@ x-app-environment: &app-environment
   APP_ENCRYPTION_KEY_VERSION: ${APP_ENCRYPTION_KEY_VERSION:-1}
   APP_PREVIOUS_ENCRYPTION_KEYS: ${APP_PREVIOUS_ENCRYPTION_KEYS:-}
   APP_BLIND_INDEX_KEY: ${APP_BLIND_INDEX_KEY:?APP_BLIND_INDEX_KEY is required}
-  PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:?PUBLIC_BASE_URL is required}
   TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:?TELEGRAM_BOT_TOKEN is required}
   TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME:?TELEGRAM_BOT_USERNAME is required}
   TELEGRAM_ADMIN_IDS: ${TELEGRAM_ADMIN_IDS:?TELEGRAM_ADMIN_IDS is required}
@@ -35,10 +34,8 @@ x-app-environment: &app-environment
   MAX_PORTAL_ACCOUNTS_PER_USER: ${MAX_PORTAL_ACCOUNTS_PER_USER:-10}
   MAX_ACTIVE_MONITORS_PER_ACCOUNT: ${MAX_ACTIVE_MONITORS_PER_ACCOUNT:-20}
   INVITE_TTL_HOURS: ${INVITE_TTL_HOURS:-72}
-  CONNECT_TICKET_TTL_MINUTES: ${CONNECT_TICKET_TTL_MINUTES:-10}
   DESTRUCTIVE_CONFIRMATION_TTL_SECONDS: ${DESTRUCTIVE_CONFIRMATION_TTL_SECONDS:-120}
   PDF_MAX_BYTES: ${PDF_MAX_BYTES:-10485760}
-  PDF_DELIVERY_MODE: ${PDF_DELIVERY_MODE:-telegram}
   AUDIT_RETENTION_DAYS: ${AUDIT_RETENTION_DAYS:-365}
   EVENT_RETENTION_DAYS: ${EVENT_RETENTION_DAYS:-90}
 
@@ -110,22 +107,6 @@ services:
         limits:
           memory: 256m
 
-  web:
-    <<: [*app-image, *app-defaults]
-    command: ["web"]
-    expose:
-      - "8000"
-    healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/health/ready"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
-    deploy:
-      resources:
-        limits:
-          memory: 512m
-
   bot:
     <<: [*app-image, *app-defaults]
     command: ["bot"]
@@ -157,33 +138,6 @@ services:
         limits:
           memory: 512m
 
-  proxy:
-    image: caddy:2.10-alpine
-    restart: unless-stopped
-    depends_on:
-      web:
-        condition: service_started
-    ports:
-      - "80:80"
-      - "443:443"
-      - "443:443/udp"
-    environment:
-      APP_DOMAIN: ${APP_DOMAIN:?APP_DOMAIN is required}
-      ACME_EMAIL: ${ACME_EMAIL:?ACME_EMAIL is required}
-    volumes:
-      - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy-data:/data
-      - caddy-config:/config
-    networks: [backend]
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:2019/config/"]
-      interval: 30s
-      timeout: 5s
-      retries: 5
-      start_period: 20s
-    security_opt:
-      - no-new-privileges:true
-
   backup:
     <<: *app-image
     profiles: ["backup"]
@@ -210,6 +164,4 @@ networks:
 
 volumes:
   mysql-data:
-  caddy-data:
-  caddy-config:
   backup-data:

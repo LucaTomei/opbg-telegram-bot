@@ -8,8 +8,6 @@ from __future__ import annotations
 
 from app.db.repositories.accounts import (
     ConnectRateLimitRepository,
-    ConnectTicketRepository,
-    DownloadTokenRepository,
     PatientRepository,
     PortalAccountRepository,
 )
@@ -52,9 +50,7 @@ __all__ = [
     "CancellationAttemptRepository",
     "ConfirmationNonceRepository",
     "ConnectRateLimitRepository",
-    "ConnectTicketRepository",
     "ConversationStateRepository",
-    "DownloadTokenRepository",
     "HeartbeatRepository",
     "InviteRepository",
     "NotificationRepository",

@@ -380,19 +380,6 @@ async def test_invalid_pdf_is_refused(
         await container.appointments.download_pdf(clean_session, appointment=target)
 
 
-async def test_one_time_download_link_is_issued(
-    clean_session: AsyncSession, container: Container, user: TelegramUser
-) -> None:
-    account, _ = await prepare(clean_session, user)
-    await container.appointments.sync_account(clean_session, account)
-    target = await AppointmentRepository(clean_session).find_by_external_id(account.id, "70001")
-    assert target is not None
-    url = await container.appointments.issue_download_link(
-        clean_session, user=user, appointment=target
-    )
-    assert url.startswith(container.settings.public_base_url + "/download/")
-
-
 async def test_attempts_are_visible_to_the_owner(
     clean_session: AsyncSession, container: Container, user: TelegramUser
 ) -> None:

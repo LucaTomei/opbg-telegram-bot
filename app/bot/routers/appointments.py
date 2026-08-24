@@ -16,7 +16,7 @@ from app.composition import Container
 from app.db.models.bookings import AppointmentCache
 from app.db.models.users import TelegramUser
 from app.db.repositories.accounts import PortalAccountRepository
-from app.domain.enums import AppointmentStatus, ConfirmationAction, PdfDeliveryMode
+from app.domain.enums import AppointmentStatus, ConfirmationAction
 from app.domain.errors import NotFoundError, PdfUnavailable
 from app.logging import get_logger
 
@@ -184,18 +184,6 @@ async def deliver_pdf(
     await acknowledge(query)
     data = callbacks.parse(query.data)
     appointment = await container.appointments.require_appointment(session, user, data.uuid_arg(0))
-    if user.pdf_delivery_mode is PdfDeliveryMode.ONE_TIME_LINK:
-        url = await container.appointments.issue_download_link(
-            session, user=user, appointment=appointment
-        )
-        from app.bot.keyboards.inline import url_button
-
-        await send_new(
-            query,
-            texts.APPOINTMENT_PDF_LINK.format(minutes=container.settings.pdf_link_ttl_minutes),
-            url_button(texts.BTN_DOWNLOAD_PDF, url),
-        )
-        return
     try:
         document = await container.appointments.download_pdf(session, appointment=appointment)
     except PdfUnavailable:

@@ -45,21 +45,16 @@ async def linked(
 
 
 # --- accounts ----------------------------------------------------------------
-async def test_the_account_screen_offers_the_secure_connection_link(
+async def test_the_account_screen_starts_the_in_chat_connection(
     bot: BotHarness, member: TelegramUser
 ) -> None:
     await bot.send(USER_ID, texts.BTN_ACCOUNTS)
     screen = bot.find("Non hai ancora collegato")
-    connect = screen.callback_for("Apri pagina sicura")
+    connect = screen.callback_for("Collega account")
 
     bot.reset()
     await bot.press(USER_ID, connect)
-    message = bot.find("link sicuro")
-    assert message.keyboard is not None
-    url_button = message.keyboard.inline_keyboard[0][0]
-    assert url_button.url is not None
-    assert url_button.url.startswith("https://")
-    assert "password" not in message.text.lower() or "Non inviare mai la password" in message.text
+    assert bot.contains("Dai un nome a questo account")
 
 
 async def test_the_account_detail_never_shows_a_secret(

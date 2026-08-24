@@ -5,7 +5,7 @@
 - Gli admin arrivano da `TELEGRAM_ADMIN_IDS` e vengono upsertati.
 - Inviti casuali ad alta entropia, hashati, con scadenza, limite usi, revoca e nota.
 - Nessuna registrazione senza invito.
-- Middleware autorizzazione su ogni message/callback/web route.
+- Middleware di autorizzazione su ogni messaggio e ogni callback.
 - Ruoli iniziali: `USER`, `ADMIN`; niente controllo basato su username Telegram.
 
 ## Vista amministrativa completa
@@ -60,19 +60,19 @@ Registrare in modo append-only:
 
 Audit include chi, cosa, target interno, motivo, timestamp, correlation ID e hash before/after; mai il segreto.
 
-## Collegamento account sicuro
+## Collegamento account
 
-1. Bot crea ticket random one-time, salva solo hash e scadenza breve.
-2. Invia inline URL HTTPS.
-3. GET valida ticket e imposta cookie CSRF `Secure`, `HttpOnly`, `SameSite=Strict`.
-4. Form chiede etichetta, email e password del portale.
-5. POST verifica ticket, CSRF, origin/host e rate limit.
-6. Backend effettua login e verifica account.
-7. Solo dopo verifica cifra credenziali/sessione e sincronizza pazienti.
-8. Ticket è consumato anche in caso di successo e non riusabile.
-9. Risposta web non mostra password e invita a tornare su Telegram.
-
-Non usare analytics, CDN JavaScript o font remoti nella pagina credenziali.
+1. L'utente avvia il collegamento da **Account → Collega account**.
+2. Il bot chiede etichetta, email e password in passi separati.
+3. Il messaggio con la password viene cancellato dalla chat appena letto; se la
+   cancellazione fallisce l'utente viene avvisato di eliminarlo a mano.
+4. La password non viene mai scritta nello stato conversazione: vive solo per la
+   durata della verifica.
+5. Il login viene verificato sul portale prima di salvare qualsiasi cosa.
+6. Solo dopo la verifica credenziali e sessione vengono cifrate e i pazienti
+   sincronizzati.
+7. Tentativi e fallimenti sono limitati per utente; superata la soglia il flusso
+   si blocca e l'utente viene avvisato.
 
 ## Cifratura
 
@@ -101,8 +101,7 @@ Non abilitare debug HTTP in produzione. Eccezioni memorizzano codici e hash/fing
 
 Le chat bot Telegram non sono un canale end-to-end. Informare gli utenti.
 
-- Modalità `telegram`: invio come documento su richiesta esplicita, senza salvataggio locale permanente.
-- Modalità `one_time_link`: token hashato, scadenza breve, un solo download, HTTPS, `Cache-Control: no-store`.
+- Il promemoria viene inviato come documento su richiesta esplicita, senza salvataggio locale permanente.
 - Mai inviare PDF automaticamente a gruppi o chat diverse dall'utente proprietario.
 - Admin può scaricarlo per conto altrui soltanto tramite azione auditata.
 
@@ -116,13 +115,12 @@ Le chat bot Telegram non sono un canale end-to-end. Informare gli utenti.
 - PDF mai persistiti.
 - Backup cifrati, retention limitata, restore controllato.
 
-## Rate limit e difese web
+## Rate limit e difese
 
-- Rate limit per IP/ticket/Telegram user sul connect form.
-- Security headers, HSTS in produzione, CSP stretta, no framing.
-- Body size limit e validazione input.
-- Errori identici per account inesistente/password errata.
-- Dopo ripetuti fallimenti, ticket/account temporaneamente bloccato e utente notificato.
+- Rate limit per utente Telegram sui tentativi di collegamento.
+- Validazione di etichetta, email e password prima di contattare il portale.
+- Errori identici per account inesistente e password errata.
+- Dopo ripetuti fallimenti il flusso viene bloccato e l'utente notificato.
 
 ## HAR e segreti
 

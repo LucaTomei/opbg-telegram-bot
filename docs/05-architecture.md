@@ -6,15 +6,6 @@
 
 MySQL 8.4 LTS, volume persistente, health check, nessuna porta pubblicata in produzione.
 
-### `web`
-
-FastAPI:
-
-- pagina HTTPS one-time per collegamento/ri-autenticazione account;
-- endpoint download PDF one-time se configurato;
-- `/health/live`, `/health/ready`, `/version`;
-- nessuna API amministrativa pubblica.
-
 ### `bot`
 
 aiogram long polling:
@@ -31,12 +22,8 @@ aiogram long polling:
 - auto-prenotazione;
 - sincronizzazione appuntamenti;
 - coda notifiche e retry;
-- cleanup ticket/nonces/eventi;
+- cleanup nonce, stato conversazioni ed eventi;
 - heartbeat e circuit breaker.
-
-### `proxy`
-
-Caddy o equivalente per TLS diretto, security headers e reverse proxy verso `web`. Il webhook Telegram non è necessario perché il bot usa long polling.
 
 ### `backup` opzionale/profile
 
@@ -44,14 +31,13 @@ Job Docker schedulato per dump MySQL cifrato con retention. Non deve includere `
 
 ## Struttura target
 
-Claude Code deve creare una struttura equivalente a:
+La struttura del codice è la seguente:
 
 ```text
 app/
   config.py
   logging.py
   main_bot.py
-  main_web.py
   main_worker.py
   db/
     base.py
@@ -74,10 +60,6 @@ app/
     callbacks.py
     middleware/
     presenters/
-  web/
-    routes/
-    forms.py
-    templates/
   services/
     accounts.py
     bookings.py
@@ -110,11 +92,11 @@ Nomi diversi sono accettabili se le responsabilità rimangono separate.
 ## Dipendenze tra livelli
 
 ```text
-Telegram/Web -> Application services -> Domain -> Repositories/Portal adapter
-Worker       -> Application services -> Domain -> Repositories/Portal adapter
+Telegram -> Application services -> Domain -> Repositories/Portal adapter
+Worker   -> Application services -> Domain -> Repositories/Portal adapter
 ```
 
-- Il dominio non importa aiogram, FastAPI, SQLAlchemy o httpx.
+- Il dominio non importa aiogram, SQLAlchemy o httpx.
 - Gli handler non eseguono query SQL dirette.
 - Il portal adapter non invia messaggi Telegram.
 - I repository non contengono logica di parsing HTML.
@@ -148,7 +130,7 @@ Worker       -> Application services -> Domain -> Repositories/Portal adapter
 - JSON structured logs con timestamp, level, service, correlation ID, user/account ID interno e event code.
 - Redazione centralizzata di email, password, cookie, token, tax code, query string sensibili e HTML.
 - Metriche minime: job due/attivi/errori, latenza portale, status login, booking outcomes, notifiche, circuit breaker.
-- Health readiness verifica MySQL e heartbeat worker; non effettua prenotazioni né login reali.
+- Il comando `healthcheck` verifica configurazione, MySQL e revisione dello schema; non effettua prenotazioni né login reali.
 
 ## Error handling
 

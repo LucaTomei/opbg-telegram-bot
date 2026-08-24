@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,13 +12,11 @@ from app.db.models.accounts import PortalAccount
 from app.db.models.users import TelegramUser
 from app.db.repositories.accounts import (
     ConnectRateLimitRepository,
-    ConnectTicketRepository,
-    DownloadTokenRepository,
     PatientRepository,
     PortalAccountRepository,
 )
 from app.db.repositories.base import utc_now
-from app.db.repositories.bookings import AppointmentRepository, BookingAttemptRepository
+from app.db.repositories.bookings import BookingAttemptRepository
 from app.db.repositories.conversations import (
     BookingDraftRepository,
     CallbackConsumptionRepository,
@@ -27,18 +25,16 @@ from app.db.repositories.conversations import (
 )
 from app.db.repositories.notifications import NotificationRepository
 from app.db.repositories.users import InviteRepository, UserRepository
-from app.domain.entities import PortalAppointment
 from app.domain.enums import (
     BookingAttemptStatus,
     ConfirmationAction,
-    ConnectTicketPurpose,
     NotificationEventType,
     PortalAccountStatus,
     UserRole,
     UserStatus,
 )
 from app.domain.errors import ConflictError
-from app.security.tokens import generate_invite_code, generate_nonce, generate_token, hash_context
+from app.security.tokens import generate_invite_code, generate_nonce, hash_context
 
 SYNTHETIC_EMAIL = "primo.utente@example.invalid"
 SYNTHETIC_PASSWORD = "password-sintetica-di-test"
@@ -280,69 +276,6 @@ async def test_patient_tax_code_is_encrypted(
 
 
 # --- tickets and tokens ------------------------------------------------------
-async def test_connect_ticket_is_single_use(
-    clean_session: AsyncSession, user: TelegramUser
-) -> None:
-    tickets = ConnectTicketRepository(clean_session)
-    token = generate_token()
-    ticket = await tickets.create(
-        user_id=user.id, token=token, purpose=ConnectTicketPurpose.CONNECT, ttl_minutes=10
-    )
-    assert ticket.is_usable(utc_now()) is True
-    found = await tickets.get_by_token(token)
-    assert found is not None
-    await tickets.consume(found)
-    assert found.is_usable(utc_now()) is False
-    assert await tickets.get_by_token("altro-token") is None
-
-
-async def test_new_ticket_invalidates_the_previous_ones(
-    clean_session: AsyncSession, user: TelegramUser
-) -> None:
-    tickets = ConnectTicketRepository(clean_session)
-    await tickets.create(
-        user_id=user.id,
-        token=generate_token(),
-        purpose=ConnectTicketPurpose.CONNECT,
-        ttl_minutes=10,
-    )
-    assert await tickets.invalidate_for_user(user.id) == 1
-
-
-async def test_download_token_is_single_use(
-    clean_session: AsyncSession, user: TelegramUser
-) -> None:
-    account = await make_account(clean_session, user)
-    appointment, _ = await AppointmentRepository(clean_session).upsert(
-        user_id=user.id,
-        account_id=account.id,
-        patient_id=None,
-        appointment=PortalAppointment(
-            external_id="70001",
-            service_name="VISITA SINTETICA",
-            doctor_name=None,
-            patient_label="Alfa Beta",
-            location_name="Sede Alfa",
-            scheduled_at_local=None,
-            scheduled_at_utc=datetime(2026, 9, 15, 7, 30, tzinfo=UTC),
-            status_hint="pending",
-            payment_note=None,
-            cancel_path="/appointments/70001/cancel",
-            pdf_path="/appointments/70001/pdf-download",
-            raw_fingerprint="fp",
-        ),
-        now=utc_now(),
-    )
-    tokens = DownloadTokenRepository(clean_session)
-    token = generate_token()
-    record = await tokens.create(
-        user_id=user.id, appointment_id=appointment.id, token=token, ttl_minutes=5
-    )
-    assert record.is_usable(utc_now()) is True
-    await tokens.consume(record)
-    assert record.is_usable(utc_now()) is False
-
-
 async def test_connect_rate_limit_counts_per_window(clean_session: AsyncSession) -> None:
     limits = ConnectRateLimitRepository(clean_session)
     window = utc_now().replace(minute=0, second=0, microsecond=0)

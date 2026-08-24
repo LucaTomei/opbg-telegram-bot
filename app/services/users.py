@@ -10,10 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.db.models.users import TelegramUser
-from app.db.repositories.accounts import (
-    ConnectTicketRepository,
-    PortalAccountRepository,
-)
+from app.db.repositories.accounts import PortalAccountRepository
 from app.db.repositories.base import utc_now
 from app.db.repositories.bookings import AppointmentRepository
 from app.db.repositories.conversations import (
@@ -22,7 +19,7 @@ from app.db.repositories.conversations import (
 )
 from app.db.repositories.users import InviteRepository, UserRepository
 from app.db.repositories.watches import WatchRepository
-from app.domain.enums import PdfDeliveryMode, UserRole, UserStatus, WatchStatus
+from app.domain.enums import UserRole, UserStatus, WatchStatus
 from app.domain.errors import (
     AlreadyConsumedError,
     ExpiredError,
@@ -41,7 +38,6 @@ class UserPreferences:
     """Per-deployment defaults applied when a user is first registered."""
 
     timezone: str
-    pdf_delivery_mode: PdfDeliveryMode
     page_size: int
     max_slots_shown: int
 
@@ -64,7 +60,6 @@ class UserService:
         """Deployment defaults applied to a newly registered user."""
         return UserPreferences(
             timezone=self._settings.app_timezone,
-            pdf_delivery_mode=PdfDeliveryMode(self._settings.pdf_delivery_mode.upper()),
             page_size=self._settings.page_size,
             max_slots_shown=self._settings.max_slots_shown,
         )
@@ -79,7 +74,6 @@ class UserService:
                 await users.upsert_admin(
                     telegram_id,
                     timezone=defaults.timezone,
-                    pdf_delivery_mode=defaults.pdf_delivery_mode,
                     page_size=defaults.page_size,
                     max_slots_shown=defaults.max_slots_shown,
                 )
@@ -147,7 +141,6 @@ class UserService:
                 role=UserRole.USER,
                 status=UserStatus.PENDING_CONSENT,
                 timezone=defaults.timezone,
-                pdf_delivery_mode=defaults.pdf_delivery_mode,
                 page_size=defaults.page_size,
                 max_slots_shown=defaults.max_slots_shown,
             )
@@ -195,16 +188,6 @@ class UserService:
             user, setting="quiet_hours", old_value=old, new_value=f"{start}-{end}"
         )
 
-    async def set_pdf_mode(
-        self, session: AsyncSession, user: TelegramUser, *, mode: PdfDeliveryMode
-    ) -> None:
-        users = UserRepository(session)
-        old = user.pdf_delivery_mode.value
-        user.pdf_delivery_mode = mode
-        await users.record_setting_change(
-            user, setting="pdf_delivery_mode", old_value=old, new_value=mode.value
-        )
-
     async def set_page_size(
         self, session: AsyncSession, user: TelegramUser, *, page_size: int
     ) -> None:
@@ -240,7 +223,6 @@ class UserService:
             "quiet_hours_end": None
             if user.quiet_hours_end is None
             else user.quiet_hours_end.strftime("%H:%M"),
-            "pdf_delivery_mode": user.pdf_delivery_mode.value,
             "page_size": user.page_size,
             "max_slots_shown": user.max_slots_shown,
             "consent_version": user.consent_version,
@@ -260,7 +242,6 @@ class UserService:
         watches = WatchRepository(session)
         drafts = BookingDraftRepository(session)
         states = ConversationStateRepository(session)
-        tickets = ConnectTicketRepository(session)
         appointments = AppointmentRepository(session)
         users = UserRepository(session)
 
@@ -280,7 +261,6 @@ class UserService:
 
         await drafts.abandon_open_for_user(user.id)
         await states.clear(user.id)
-        await tickets.invalidate_for_user(user.id)
 
         user.username = None
         user.first_name = None

@@ -53,11 +53,6 @@ def test_empty_key_material_is_refused() -> None:
         decode_key_material("  ", field_name="APP_ENCRYPTION_KEY")
 
 
-def test_production_requires_https() -> None:
-    with pytest.raises(ValidationError):
-        build(APP_ENV="production", PUBLIC_BASE_URL="http://insecure.example")
-
-
 def test_unknown_timezone_is_refused() -> None:
     with pytest.raises(ValidationError):
         build(APP_TIMEZONE="Mars/Olympus")
@@ -94,11 +89,11 @@ def test_bot_username_is_normalised() -> None:
 
 
 def test_urls_are_trimmed_and_validated() -> None:
-    assert build(PUBLIC_BASE_URL="https://example.test/").public_base_url == (
+    assert build(PORTAL_BASE_URL="https://example.test/").portal_base_url == (
         "https://example.test"
     )
     with pytest.raises(ValidationError):
-        build(PUBLIC_BASE_URL="ftp://example.test")
+        build(PORTAL_BASE_URL="ftp://example.test")
 
 
 def test_database_urls_quote_the_password() -> None:
@@ -125,12 +120,6 @@ def test_previous_keys_require_the_version_prefix() -> None:
     previous = base64.urlsafe_b64encode(bytes(range(128, 160))).decode()
     with pytest.raises(ValidationError):
         build(APP_PREVIOUS_ENCRYPTION_KEYS=previous)
-
-
-def test_connect_and_pdf_urls_are_built_from_the_public_base() -> None:
-    settings = build()
-    assert settings.connect_url("abc") == "https://bot.test.invalid/connect/abc"
-    assert settings.pdf_url("abc") == "https://bot.test.invalid/download/abc"
 
 
 def test_secrets_are_not_exposed_by_repr() -> None:

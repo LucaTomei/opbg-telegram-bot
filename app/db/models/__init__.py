@@ -9,8 +9,6 @@ from __future__ import annotations
 from app.db.base import Base
 from app.db.models.accounts import (
     ConnectRateLimit,
-    ConnectTicket,
-    DownloadToken,
     Patient,
     PortalAccount,
 )
@@ -51,9 +49,7 @@ __all__ = [
     "CircuitBreakerStateRecord",
     "ConfirmationNonce",
     "ConnectRateLimit",
-    "ConnectTicket",
     "ConversationState",
-    "DownloadToken",
     "InviteCode",
     "InviteRedemption",
     "NotificationEvent",

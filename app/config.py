@@ -17,7 +17,6 @@ from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 AppEnv = Literal["development", "test", "staging", "production"]
-PdfDeliveryMode = Literal["telegram", "one_time_link"]
 
 MIN_KEY_BYTES: Final[int] = 32
 
@@ -89,7 +88,6 @@ class Settings(BaseSettings):
     app_encryption_key_version: Annotated[int, Field(ge=1, le=1_000)] = 1
     app_previous_encryption_keys: str = ""
     app_blind_index_key: SecretStr
-    public_base_url: str
 
     # --- Telegram --------------------------------------------------------
     telegram_bot_token: SecretStr
@@ -138,13 +136,10 @@ class Settings(BaseSettings):
 
     # --- Security and lifecycle -----------------------------------------
     invite_ttl_hours: Annotated[int, Field(ge=1, le=8_760)] = 72
-    connect_ticket_ttl_minutes: Annotated[int, Field(ge=1, le=120)] = 10
     destructive_confirmation_ttl_seconds: Annotated[int, Field(ge=15, le=3_600)] = 120
     conversation_state_ttl_seconds: Annotated[int, Field(ge=60, le=86_400)] = 3_600
     booking_draft_ttl_seconds: Annotated[int, Field(ge=60, le=86_400)] = 3_600
     pdf_max_bytes: Annotated[int, Field(ge=1_024, le=104_857_600)] = 10_485_760
-    pdf_delivery_mode: PdfDeliveryMode = "telegram"
-    pdf_link_ttl_minutes: Annotated[int, Field(ge=1, le=120)] = 10
     audit_retention_days: Annotated[int, Field(ge=30, le=3_650)] = 365
     event_retention_days: Annotated[int, Field(ge=7, le=3_650)] = 90
     notification_retention_days: Annotated[int, Field(ge=7, le=3_650)] = 90
@@ -157,10 +152,6 @@ class Settings(BaseSettings):
     # --- Presentation ----------------------------------------------------
     page_size: Annotated[int, Field(ge=3, le=20)] = 6
     max_slots_shown: Annotated[int, Field(ge=1, le=200)] = 40
-
-    # --- Reverse proxy ---------------------------------------------------
-    app_domain: str = "localhost"
-    acme_email: str = ""
 
     # --- Worker ----------------------------------------------------------
     worker_id: str = ""
@@ -186,7 +177,7 @@ class Settings(BaseSettings):
             raise ValueError(f"unknown timezone: {value}") from exc
         return value
 
-    @field_validator("public_base_url", "portal_base_url")
+    @field_validator("portal_base_url")
     @classmethod
     def _validate_url(cls, value: str) -> str:
         cleaned = value.strip().rstrip("/")
@@ -228,8 +219,6 @@ class Settings(BaseSettings):
             raise ValueError(
                 "monitor_default_interval_seconds must be >= monitor_min_interval_seconds"
             )
-        if self.app_env == "production" and not self.public_base_url.startswith("https://"):
-            raise ValueError("public_base_url must use HTTPS in production")
         decode_key_material(
             self.app_encryption_key.get_secret_value(), field_name="APP_ENCRYPTION_KEY"
         )
@@ -246,10 +235,6 @@ class Settings(BaseSettings):
         return self
 
     # --- Derived helpers -------------------------------------------------
-    @property
-    def is_production(self) -> bool:
-        return self.app_env == "production"
-
     @property
     def timezone(self) -> ZoneInfo:
         return ZoneInfo(self.app_timezone)
@@ -329,12 +314,6 @@ class Settings(BaseSettings):
             f"{self.mysql_user}:{_quote(password)}@{self.database_host}:{self.database_port}"
             f"/{self.mysql_database}?charset=utf8mb4"
         )
-
-    def connect_url(self, token: str) -> str:
-        return f"{self.public_base_url}/connect/{token}"
-
-    def pdf_url(self, token: str) -> str:
-        return f"{self.public_base_url}/download/{token}"
 
     def invite_link(self, code: str) -> str:
         """Deep link that opens the bot and redeems the invite in one tap."""

@@ -2,12 +2,11 @@
 
 ## Artefatti richiesti
 
-Claude Code deve creare:
+Il deploy si compone di:
 
 - `Dockerfile` multi-stage non-root;
-- `compose.yaml` per produzione locale;
-- `compose.override.yaml` o profilo development;
-- configurazione Caddy/TLS;
+- `compose.yaml` per la produzione;
+- `compose.override.yaml` per lo sviluppo;
 - entrypoint sicuro;
 - script migrazioni, backup, restore, health e key generation;
 - `Makefile` o task runner con comandi documentati;
@@ -18,14 +17,14 @@ Claude Code deve creare:
 
 ```text
 mysql
-web
 bot
 worker
-proxy
-backup (profile opzionale)
+migrate
+backup (profilo opzionale)
 ```
 
-`web`, `bot` e `worker` usano la stessa immagine/versione ma comandi diversi.
+`bot`, `worker` e `migrate` usano la stessa immagine e versione, con comandi diversi.
+Nessun servizio pubblica porte: il bot usa long polling.
 
 ## MySQL
 
@@ -49,29 +48,25 @@ backup (profile opzionale)
 
 ### Liveness
 
-Processo/event loop vivo; non dipende dal portale.
+Processo ed event loop vivi; non dipende dal portale.
 
-### Readiness web/bot
+### Readiness bot e worker
 
 - configurazione valida;
 - MySQL raggiungibile;
-- migrazione schema corrente;
-- per bot, polling inizializzato.
+- schema alla revisione corrente;
+- per il worker, heartbeat recente.
 
-### Readiness worker
+Il controllo è `python -m app.cli healthcheck`, usato dagli health check dei
+container. Non effettua login né prenotazioni.
 
-- MySQL raggiungibile;
-- heartbeat recente;
-- non richiede che il portale sia online.
+## Networking
 
-## TLS e networking
-
-- Solo proxy espone 80/443.
-- Redirect HTTP→HTTPS.
-- HSTS dopo verifica dominio.
-- Caddy inoltra solo route web previste.
-- Pagina credenziali senza cache.
-- Bot long polling: nessuna porta Telegram in ingresso.
+- Nessuna porta pubblicata in produzione: il bot usa long polling e non riceve
+  connessioni in ingresso.
+- MySQL è raggiungibile solo dalla rete interna del Compose.
+- In sviluppo `compose.override.yaml` pubblica MySQL su `127.0.0.1:13306` per i
+  test di integrazione.
 
 ## Avvio atteso
 
@@ -83,7 +78,7 @@ docker compose build
 docker compose run --rm migrate
 docker compose up -d
 docker compose ps
-docker compose logs --tail=200 web bot worker
+docker compose logs --tail=200 bot worker
 ```
 
 Non inserire mai segreti nei comandi di esempio.

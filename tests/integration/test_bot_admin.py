@@ -406,7 +406,7 @@ async def test_delegated_pdf_is_audited(
     confirm = bot.last().callback_for("Conferma")
     bot.reset()
     await bot.press(ADMIN_ID, confirm)
-    assert "Link monouso" in bot.last().text
+    assert "Promemoria disponibile" in bot.last().text
 
     async with database.read_session() as session:
         entries = await AuditRepository(session).list_entries(

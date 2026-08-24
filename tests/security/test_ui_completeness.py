@@ -121,8 +121,6 @@ def test_no_configuration_value_is_declared_but_unused() -> None:
         "mysql_password",
         "mysql_user",
         "telegram_admin_ids",
-        "app_domain",
-        "acme_email",
         # Consumed by Settings.invite_link, which the administration screens call.
         "telegram_bot_username",
     }

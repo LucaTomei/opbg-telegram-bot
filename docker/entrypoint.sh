@@ -2,12 +2,9 @@
 # Container entrypoint: selects the process to run inside the shared image.
 set -eu
 
-command="${1:-web}"
+command="${1:-bot}"
 
 case "${command}" in
-  web)
-    exec python -m app.main_web
-    ;;
   bot)
     exec python -m app.main_bot
     ;;

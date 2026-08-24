@@ -17,6 +17,7 @@ from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.client.session.base import BaseSession
 from aiogram.enums import ParseMode
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.methods import TelegramMethod
 from aiogram.types import (
     CallbackQuery,
@@ -73,6 +74,10 @@ class FakeSession(BaseSession):
     def __init__(self) -> None:
         super().__init__()
         self.calls: list[SentMessage] = []
+        self.deleted: list[int] = []
+        #: Set to True to make every delete_message call fail, as it does when
+        #: the message is older than the window Telegram allows.
+        self.deletion_fails = False
         self._message_ids = itertools.count(1000)
 
     async def close(self) -> None:
@@ -100,14 +105,21 @@ class FakeSession(BaseSession):
         text = str(payload.get("text") or payload.get("caption") or "")
         self.calls.append(SentMessage(method=name, text=text, keyboard=markup, payload=payload))
 
+        if name == "DeleteMessage":
+            if self.deletion_fails:
+                raise TelegramBadRequest(method=method, message="message can't be deleted")
+            self.deleted.append(int(payload.get("message_id", 0)))
+            return True
         if name in {"SendMessage", "EditMessageText", "SendDocument"}:
+            # Bound to the bot, exactly like a real answer: handlers may call
+            # edit_text on the message they just sent.
             return Message(
                 message_id=next(self._message_ids),
                 date=datetime.now(UTC),
                 chat=Chat(id=int(payload.get("chat_id", 1)), type="private"),
                 text=text or None,
                 reply_markup=markup,
-            )
+            ).as_(bot)
         return True
 
 
@@ -119,6 +131,7 @@ class BotHarness:
     bot: Bot
     dispatcher: Dispatcher
     session: FakeSession
+    last_sent_message_id: int = 0
     _update_ids: Any = field(default_factory=lambda: itertools.count(1))
 
     @classmethod
@@ -138,6 +151,11 @@ class BotHarness:
 
     def reset(self) -> None:
         self.session.calls.clear()
+        self.session.deleted.clear()
+
+    @property
+    def deleted(self) -> list[int]:
+        return self.session.deleted
 
     @property
     def sent(self) -> list[SentMessage]:
@@ -164,10 +182,11 @@ class BotHarness:
 
     async def send(self, telegram_id: int, text: str) -> list[SentMessage]:
         before = len(self.session.calls)
+        self.last_sent_message_id = next(self.session._message_ids)
         update = Update(
             update_id=next(self._update_ids),
             message=Message(
-                message_id=next(self.session._message_ids),
+                message_id=self.last_sent_message_id,
                 date=datetime.now(UTC),
                 chat=Chat(id=telegram_id, type="private"),
                 from_user=self._user(telegram_id),

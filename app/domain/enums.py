@@ -30,12 +30,6 @@ class PortalAccountStatus(StrEnum):
 
 
 @unique
-class ConnectTicketPurpose(StrEnum):
-    CONNECT = "CONNECT"
-    REAUTH = "REAUTH"
-
-
-@unique
 class SearchType(StrEnum):
     SERVICE = "SERVICE"
     DOCTOR = "DOCTOR"
@@ -236,12 +230,6 @@ class BreakerState(StrEnum):
     CLOSED = "CLOSED"
     OPEN = "OPEN"
     HALF_OPEN = "HALF_OPEN"
-
-
-@unique
-class PdfDeliveryMode(StrEnum):
-    TELEGRAM = "TELEGRAM"
-    ONE_TIME_LINK = "ONE_TIME_LINK"
 
 
 WEEKDAY_LABELS_IT: tuple[str, ...] = (

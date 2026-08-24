@@ -5,21 +5,23 @@ from __future__ import annotations
 import uuid
 
 from aiogram import F, Router
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot import callbacks, texts
-from app.bot.keyboards.inline import Entry, build_actions, build_list, url_button
+from app.bot.keyboards.inline import Entry, build_actions, build_list
 from app.bot.presenters.formatting import escape, format_account, format_patient
 from app.bot.routers.common import acknowledge, page_size, render, send_new
 from app.composition import Container
 from app.db.models.users import TelegramUser
 from app.db.repositories.accounts import PatientRepository
-from app.domain.enums import ConfirmationAction, ConnectTicketPurpose, PortalAccountStatus
-from app.domain.errors import NotFoundError, ValidationError
+from app.domain.enums import ConfirmationAction, PortalAccountStatus
+from app.domain.errors import AuthenticationFailed, NotFoundError, ValidationError
 from app.logging import get_logger
+from app.services.accounts import clean_email
 
 logger = get_logger(__name__)
 router = Router(name="accounts")
@@ -42,6 +44,9 @@ class AccountStates(StatesGroup):
     """Free-text steps of the account screens."""
 
     waiting_label = State()
+    waiting_new_label = State()
+    waiting_email = State()
+    waiting_password = State()
 
 
 def _list_target() -> str:
@@ -98,42 +103,137 @@ async def list_accounts(
 
 
 @router.callback_query(F.data.startswith(f"{NS}|{A_CONNECT}"))
-async def connect_account(
-    query: CallbackQuery, session: AsyncSession, container: Container, user: TelegramUser
+async def start_connection(
+    query: CallbackQuery,
+    session: AsyncSession,
+    container: Container,
+    user: TelegramUser,
+    state: FSMContext,
 ) -> None:
-    """Issue the one-time HTTPS link; credentials never travel through Telegram."""
+    """Begin the in-chat credential flow after checking consent and quota."""
     await acknowledge(query)
-    link = await container.accounts.create_connect_link(session, user)
+    await container.accounts.ensure_can_connect(session, user)
+    await state.set_state(AccountStates.waiting_label)
+    await state.update_data(reauth_account_id=None)
     await render(
         query,
-        texts.ACCOUNT_CONNECT_LINK.format(minutes=link.expires_in_minutes),
-        url_button(texts.ACCOUNT_CONNECT_BUTTON, link.url, back_target=_list_target()),
+        texts.ACCOUNT_ASK_LABEL,
+        build_actions([], back_target=_list_target(), show_cancel=True),
     )
 
 
 @router.callback_query(F.data.startswith(f"{NS}|{A_REAUTH}"))
-async def reauth_account(
-    query: CallbackQuery, session: AsyncSession, container: Container, user: TelegramUser
+async def start_reauthentication(
+    query: CallbackQuery,
+    session: AsyncSession,
+    container: Container,
+    user: TelegramUser,
+    state: FSMContext,
 ) -> None:
+    """Refresh the credentials of an existing account, in chat."""
     await acknowledge(query)
     data = callbacks.parse(query.data)
     account = await container.accounts.require_account(session, user, data.uuid_arg(0))
-    link = await container.accounts.create_connect_link(
-        session,
-        user,
-        purpose=ConnectTicketPurpose.REAUTH,
-        portal_account_id=account.id,
-        suggested_label=account.label,
-    )
+    await state.set_state(AccountStates.waiting_email)
+    await state.update_data(reauth_account_id=account.id.hex, label=account.label)
     await render(
         query,
-        texts.ACCOUNT_CONNECT_LINK.format(minutes=link.expires_in_minutes),
-        url_button(
-            texts.ACCOUNT_CONNECT_BUTTON,
-            link.url,
-            back_target=callbacks.build(NS, A_OPEN, account.id),
-        ),
+        texts.ACCOUNT_REAUTH_START.format(label=escape(account.label)),
+        build_actions([], back_target=callbacks.build(NS, A_OPEN, account.id), show_cancel=True),
     )
+
+
+@router.message(AccountStates.waiting_label)
+async def receive_label(message: Message, state: FSMContext) -> None:
+    """Store the label, then ask for the e-mail address."""
+    await state.update_data(label=(message.text or "").strip())
+    await state.set_state(AccountStates.waiting_email)
+    await message.answer(
+        texts.ACCOUNT_ASK_EMAIL,
+        reply_markup=build_actions([], back_target=_list_target(), show_cancel=True),
+        parse_mode="HTML",
+    )
+
+
+@router.message(AccountStates.waiting_email)
+async def receive_email(message: Message, state: FSMContext) -> None:
+    """Validate and store the e-mail, then ask for the password."""
+    email = clean_email(message.text or "")
+    await state.update_data(email=email)
+    await state.set_state(AccountStates.waiting_password)
+    await message.answer(
+        texts.ACCOUNT_ASK_PASSWORD,
+        reply_markup=build_actions([], show_cancel=True),
+        parse_mode="HTML",
+    )
+
+
+async def _erase(message: Message) -> bool:
+    """Delete the message carrying the password, as soon as it is read."""
+    try:
+        await message.delete()
+    except TelegramBadRequest:
+        logger.warning(
+            "could not delete the credential message",
+            extra={"event_code": "CREDENTIAL_MESSAGE_NOT_DELETED"},
+        )
+        return False
+    return True
+
+
+@router.message(AccountStates.waiting_password)
+async def receive_password(
+    message: Message,
+    session: AsyncSession,
+    container: Container,
+    user: TelegramUser,
+    state: FSMContext,
+) -> None:
+    """Verify the credentials and store them, keeping nothing in the chat.
+
+    The password lives only in this frame: it is never written to the
+    conversation state and the message carrying it is deleted immediately.
+    """
+    password = message.text or ""
+    erased = await _erase(message)
+    stored = await state.get_data()
+    await state.clear()
+    await message.answer(
+        texts.ACCOUNT_CREDENTIALS_DELETED if erased else texts.ACCOUNT_CREDENTIALS_NOT_DELETED
+    )
+
+    label = str(stored.get("label") or "")
+    email = str(stored.get("email") or "")
+    raw_account_id = stored.get("reauth_account_id")
+    if not email:
+        raise NotFoundError("the connection flow expired")
+
+    notice = await message.answer(texts.ACCOUNT_CONNECTING)
+    try:
+        if raw_account_id:
+            account = await container.accounts.require_account(
+                session, user, uuid.UUID(hex=str(raw_account_id))
+            )
+            await container.accounts.reauthenticate(
+                session, user, account, email=email, password=password
+            )
+            await notice.edit_text(texts.ACCOUNT_REAUTH_DONE, parse_mode="HTML")
+        else:
+            account = await container.accounts.connect(
+                session, user, label=label, email=email, password=password
+            )
+            patients = await PatientRepository(session).list_for_account(account.id)
+            await notice.edit_text(
+                texts.ACCOUNT_CONNECTED.format(label=escape(account.label), patients=len(patients)),
+                parse_mode="HTML",
+            )
+    except AuthenticationFailed:
+        await notice.edit_text(texts.ACCOUNT_CONNECT_FAILED, parse_mode="HTML")
+        return
+    finally:
+        del password
+
+    await _render_account(message, session, container, user, account.id)
 
 
 def _account_actions(account_id: uuid.UUID, *, enabled: bool) -> list[list[Entry]]:
@@ -276,7 +376,7 @@ async def ask_label(
     await acknowledge(query)
     data = callbacks.parse(query.data)
     account = await container.accounts.require_account(session, user, data.uuid_arg(0))
-    await state.set_state(AccountStates.waiting_label)
+    await state.set_state(AccountStates.waiting_new_label)
     await state.update_data(account_id=account.id.hex)
     await render(
         query,
@@ -285,7 +385,7 @@ async def ask_label(
     )
 
 
-@router.message(AccountStates.waiting_label)
+@router.message(AccountStates.waiting_new_label)
 async def apply_label(
     message: Message,
     session: AsyncSession,

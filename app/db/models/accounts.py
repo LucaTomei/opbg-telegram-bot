@@ -31,7 +31,7 @@ from app.db.base import (
     encrypted_text,
 )
 from app.db.types import BlindIndexColumn, Ciphertext, UuidBinary
-from app.domain.enums import ConnectTicketPurpose, PortalAccountStatus
+from app.domain.enums import PortalAccountStatus
 
 if TYPE_CHECKING:
     from app.db.models.users import TelegramUser
@@ -122,33 +122,6 @@ class Patient(UuidPkMixin, TimestampMixin, VersionMixin, SoftDeleteMixin, Base):
     account: Mapped[PortalAccount] = relationship(back_populates="patients", lazy="noload")
 
 
-class ConnectTicket(UuidPkMixin, TimestampMixin, Base):
-    """Short lived one-time ticket backing the secure HTTPS connect form."""
-
-    __tablename__ = "connect_tickets"
-
-    telegram_user_id: Mapped[uuid.UUID] = mapped_column(
-        UuidBinary, ForeignKey("telegram_users.id", ondelete="CASCADE"), nullable=False, index=True
-    )
-    token_hash: Mapped[bytes] = mapped_column(BINARY(32), unique=True, nullable=False)
-    csrf_hash: Mapped[bytes | None] = mapped_column(BINARY(32), default=None)
-    purpose: Mapped[ConnectTicketPurpose] = mapped_column(
-        SAEnum(ConnectTicketPurpose, native_enum=False, length=16), nullable=False
-    )
-    portal_account_id: Mapped[uuid.UUID | None] = mapped_column(
-        UuidBinary, ForeignKey("portal_accounts.id", ondelete="CASCADE"), default=None
-    )
-    suggested_label: Mapped[str | None] = mapped_column(String(64), default=None)
-    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
-    consumed_at: Mapped[datetime | None] = mapped_column(DateTime, default=None)
-    failure_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    #: Hash of the requesting address; the raw address is never persisted.
-    request_fingerprint: Mapped[bytes | None] = mapped_column(BINARY(32), default=None)
-
-    def is_usable(self, now: datetime) -> bool:
-        return self.consumed_at is None and self.expires_at > now
-
-
 class ConnectRateLimit(UuidPkMixin, TimestampMixin, Base):
     """Sliding counter protecting the public connect form."""
 
@@ -159,25 +132,3 @@ class ConnectRateLimit(UuidPkMixin, TimestampMixin, Base):
     subject_hash: Mapped[bytes] = mapped_column(BINARY(32), nullable=False)
     window_start: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
     counter: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-
-
-class DownloadToken(UuidPkMixin, TimestampMixin, Base):
-    """One-time HTTPS link used to deliver an appointment reminder PDF."""
-
-    __tablename__ = "download_tokens"
-
-    telegram_user_id: Mapped[uuid.UUID] = mapped_column(
-        UuidBinary, ForeignKey("telegram_users.id", ondelete="CASCADE"), nullable=False, index=True
-    )
-    appointment_id: Mapped[uuid.UUID] = mapped_column(
-        UuidBinary, ForeignKey("appointments_cache.id", ondelete="CASCADE"), nullable=False
-    )
-    token_hash: Mapped[bytes] = mapped_column(BINARY(32), unique=True, nullable=False)
-    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
-    consumed_at: Mapped[datetime | None] = mapped_column(DateTime, default=None)
-    issued_by_admin_id: Mapped[uuid.UUID | None] = mapped_column(
-        UuidBinary, ForeignKey("telegram_users.id", ondelete="SET NULL"), default=None
-    )
-
-    def is_usable(self, now: datetime) -> bool:
-        return self.consumed_at is None and self.expires_at > now

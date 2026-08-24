@@ -4,21 +4,14 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Sequence
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from sqlalchemy import Select, select
 
 from app.db.base import blind_index_for
-from app.db.models.accounts import (
-    ConnectRateLimit,
-    ConnectTicket,
-    DownloadToken,
-    Patient,
-    PortalAccount,
-)
+from app.db.models.accounts import ConnectRateLimit, Patient, PortalAccount
 from app.db.repositories.base import BaseRepository, Page, utc_now
-from app.domain.enums import ConnectTicketPurpose, PortalAccountStatus
-from app.security.tokens import hash_token
+from app.domain.enums import PortalAccountStatus
 
 ACCOUNT_TABLE = "portal_accounts"
 PATIENT_TABLE = "patients"
@@ -277,107 +270,6 @@ class PatientRepository(BaseRepository[Patient]):
         if account_id is not None:
             statement = statement.where(Patient.portal_account_id == account_id)
         return await self.paginate(statement, page=page, page_size=page_size)
-
-
-class ConnectTicketRepository(BaseRepository[ConnectTicket]):
-    model = ConnectTicket
-
-    async def create(
-        self,
-        *,
-        user_id: uuid.UUID,
-        token: str,
-        purpose: ConnectTicketPurpose,
-        ttl_minutes: int,
-        portal_account_id: uuid.UUID | None = None,
-        suggested_label: str | None = None,
-        request_fingerprint: bytes | None = None,
-    ) -> ConnectTicket:
-        ticket = ConnectTicket(
-            telegram_user_id=user_id,
-            token_hash=hash_token(token),
-            purpose=purpose,
-            portal_account_id=portal_account_id,
-            suggested_label=suggested_label,
-            expires_at=utc_now() + timedelta(minutes=ttl_minutes),
-            request_fingerprint=request_fingerprint,
-        )
-        return await self.add(ticket)
-
-    async def get_by_token(self, token: str) -> ConnectTicket | None:
-        return await self.one_or_none(
-            select(ConnectTicket).where(ConnectTicket.token_hash == hash_token(token))
-        )
-
-    async def consume(self, ticket: ConnectTicket) -> None:
-        ticket.consumed_at = utc_now()
-        await self.flush()
-
-    async def register_failure(self, ticket: ConnectTicket) -> None:
-        ticket.failure_count += 1
-        await self.flush()
-
-    async def invalidate_for_user(self, user_id: uuid.UUID) -> int:
-        statement = select(ConnectTicket).where(
-            ConnectTicket.telegram_user_id == user_id,
-            ConnectTicket.consumed_at.is_(None),
-        )
-        count = 0
-        now = utc_now()
-        for ticket in await self.session.scalars(statement):
-            ticket.consumed_at = now
-            count += 1
-        await self.flush()
-        return count
-
-    async def purge_expired(self, *, before: datetime) -> int:
-        statement = select(ConnectTicket).where(ConnectTicket.expires_at < before)
-        removed = 0
-        for ticket in await self.session.scalars(statement):
-            await self.session.delete(ticket)
-            removed += 1
-        await self.flush()
-        return removed
-
-
-class DownloadTokenRepository(BaseRepository[DownloadToken]):
-    model = DownloadToken
-
-    async def create(
-        self,
-        *,
-        user_id: uuid.UUID,
-        appointment_id: uuid.UUID,
-        token: str,
-        ttl_minutes: int,
-        issued_by_admin_id: uuid.UUID | None = None,
-    ) -> DownloadToken:
-        record = DownloadToken(
-            telegram_user_id=user_id,
-            appointment_id=appointment_id,
-            token_hash=hash_token(token),
-            expires_at=utc_now() + timedelta(minutes=ttl_minutes),
-            issued_by_admin_id=issued_by_admin_id,
-        )
-        return await self.add(record)
-
-    async def get_by_token(self, token: str) -> DownloadToken | None:
-        return await self.one_or_none(
-            select(DownloadToken).where(DownloadToken.token_hash == hash_token(token))
-        )
-
-    async def consume(self, record: DownloadToken) -> None:
-        record.consumed_at = utc_now()
-        await self.flush()
-
-    async def purge_expired(self, *, before: datetime) -> int:
-        statement = select(DownloadToken).where(DownloadToken.expires_at < before)
-        removed = 0
-        for record in await self.session.scalars(statement):
-            await self.session.delete(record)
-            removed += 1
-        await self.flush()
-        return removed
 
 
 class ConnectRateLimitRepository(BaseRepository[ConnectRateLimit]):

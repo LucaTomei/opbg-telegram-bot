@@ -1,7 +1,7 @@
 """Process-wide security services used by ORM field descriptors.
 
 Encryption and blind-index services are configured once by each composition
-root (``main_bot``, ``main_web``, ``main_worker``, Alembic and the test suite).
+root (``main_bot``, ``main_worker``, Alembic and the test suite).
 ORM attribute descriptors cannot receive constructor arguments, so they resolve
 the services through this module; every other layer receives them by explicit
 dependency injection.

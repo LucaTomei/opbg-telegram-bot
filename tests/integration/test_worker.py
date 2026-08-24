@@ -361,23 +361,17 @@ async def test_appointment_sync_task_refreshes_due_accounts(
 async def test_cleanup_removes_expired_records(
     clean_session: AsyncSession, container: Container, user: TelegramUser
 ) -> None:
-    from app.db.repositories.accounts import ConnectTicketRepository
-    from app.domain.enums import ConnectTicketPurpose
-    from app.security.tokens import generate_token
+    """Retention removes the short lived records the bot no longer needs."""
+    from app.db.repositories.conversations import ConversationStateRepository
 
-    tickets = ConnectTicketRepository(clean_session)
-    ticket = await tickets.create(
-        user_id=user.id,
-        token=generate_token(),
-        purpose=ConnectTicketPurpose.CONNECT,
-        ttl_minutes=1,
-    )
-    ticket.expires_at = utc_now() - timedelta(days=1)
-    await tickets.flush()
+    states = ConversationStateRepository(clean_session)
+    record = await states.set_state(user.id, state="stale", payload=None, ttl_seconds=60)
+    record.expires_at = utc_now() - timedelta(days=1)
+    await states.flush()
 
     removed = await CleanupTask(container.settings).run(clean_session)
-    assert removed["connect_tickets"] >= 1
-    assert "download_links" in removed
+    assert removed["conversation_states"] >= 1
+    assert "audit_entries" in removed
 
 
 # --- notification delivery ---------------------------------------------------

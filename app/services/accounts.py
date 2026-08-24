@@ -1,4 +1,10 @@
-"""Portal account connection, re-authentication and patient synchronisation."""
+"""Portal account connection, re-authentication and patient synchronisation.
+
+Credentials are collected inside the Telegram conversation.  The handler that
+receives them deletes the message immediately, never writes the password to the
+conversation state and calls this service, which verifies the login against the
+portal before anything is persisted.
+"""
 
 from __future__ import annotations
 
@@ -9,29 +15,24 @@ from hashlib import sha256
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
-from app.db.models.accounts import ConnectTicket, PortalAccount
+from app.db.models.accounts import PortalAccount
 from app.db.models.users import TelegramUser
 from app.db.repositories.accounts import (
     ConnectRateLimitRepository,
-    ConnectTicketRepository,
     PatientRepository,
     PortalAccountRepository,
 )
 from app.db.repositories.base import utc_now
-from app.db.repositories.users import UserRepository
 from app.db.repositories.watches import WatchRepository
 from app.domain.enums import (
-    ConnectTicketPurpose,
     NotificationEventType,
     PortalAccountStatus,
     WatchStatus,
 )
 from app.domain.errors import (
-    AlreadyConsumedError,
     AuthenticationFailed,
     ConflictError,
     ConsentRequiredError,
-    ExpiredError,
     NotFoundError,
     QuotaExceededError,
     RateLimitedError,
@@ -41,22 +42,18 @@ from app.logging import get_logger
 from app.portal.client import PortalClient
 from app.portal.models import PortalCredentials
 from app.security.context import get_encryption
-from app.security.tokens import generate_token
 from app.services.notifications import NotificationService
 from app.services.portal_sessions import PortalSessionManager
 
 logger = get_logger(__name__)
 
 MAX_LABEL_LENGTH = 64
+MAX_EMAIL_LENGTH = 254
+MAX_PASSWORD_LENGTH = 255
 
-
-@dataclass(frozen=True, slots=True)
-class ConnectLink:
-    """A one-time HTTPS link the user opens to submit credentials."""
-
-    url: str
-    expires_in_minutes: int
-    ticket_id: uuid.UUID
+#: Rate-limit scopes protecting the credential steps of the conversation.
+SCOPE_ATTEMPT = "attempt"
+SCOPE_FAILURE = "failure"
 
 
 @dataclass(frozen=True, slots=True)
@@ -66,8 +63,28 @@ class PatientSyncResult:
 
 
 def fingerprint_subject(value: str) -> bytes:
-    """Hash a rate-limit subject so raw addresses are never persisted."""
+    """Hash a rate-limit subject so no raw identifier is persisted."""
     return sha256(value.encode("utf-8")).digest()
+
+
+def clean_label(label: str) -> str:
+    cleaned = " ".join(label.strip().split())[:MAX_LABEL_LENGTH]
+    if not cleaned:
+        raise ValidationError("a label is required")
+    return cleaned
+
+
+def clean_email(email: str) -> str:
+    cleaned = email.strip()
+    if "@" not in cleaned or len(cleaned) > MAX_EMAIL_LENGTH or " " in cleaned:
+        raise ValidationError("the e-mail address is not valid")
+    return cleaned
+
+
+def check_password(password: str) -> str:
+    if not password or len(password) > MAX_PASSWORD_LENGTH:
+        raise ValidationError("the password is not valid")
+    return password
 
 
 class AccountService:
@@ -85,175 +102,142 @@ class AccountService:
         self._sessions = sessions
         self._notifications = notifications
 
+    # --- guards ----------------------------------------------------------
+    async def ensure_can_connect(self, session: AsyncSession, user: TelegramUser) -> None:
+        """Check consent, quota and rate limit before asking for credentials."""
+        if not user.has_consented:
+            raise ConsentRequiredError("consent is required before connecting an account")
+        accounts = PortalAccountRepository(session)
+        if await accounts.count_for_user(user.id) >= self._settings.max_portal_accounts_per_user:
+            raise QuotaExceededError(
+                "the maximum number of portal accounts has been reached",
+                limit=str(self._settings.max_portal_accounts_per_user),
+            )
+        await self._hit_limit(
+            session,
+            scope=SCOPE_ATTEMPT,
+            subject=user.id.hex,
+            limit=self._settings.connect_rate_limit_per_hour,
+        )
+
+    async def _hit_limit(
+        self, session: AsyncSession, *, scope: str, subject: str, limit: int
+    ) -> None:
+        now = utc_now()
+        exceeded = await ConnectRateLimitRepository(session).hit(
+            scope=scope,
+            subject_hash=fingerprint_subject(subject),
+            window_start=now.replace(minute=0, second=0, microsecond=0),
+            limit=limit,
+        )
+        if exceeded:
+            raise RateLimitedError("too many attempts", retry_after_seconds=3600)
+
+    async def _register_failure(self, session: AsyncSession, user: TelegramUser) -> None:
+        """Count a wrong password and warn the user when the limit is reached."""
+        try:
+            await self._hit_limit(
+                session,
+                scope=SCOPE_FAILURE,
+                subject=user.id.hex,
+                limit=self._settings.connect_max_failures,
+            )
+        except RateLimitedError:
+            if self._notifications is not None:
+                await self._notifications.queue(
+                    session,
+                    user=user,
+                    event_type=NotificationEventType.REAUTH_REQUIRED,
+                    subject=f"{user.id.hex}:connect-locked",
+                    payload={
+                        "account_id": user.id.hex,
+                        "watch_name": "",
+                        "error_code": "CONNECT_LOCKED",
+                    },
+                )
+            logger.warning(
+                "credential attempts locked after repeated failures",
+                extra={"event_code": "CONNECT_LOCKED"},
+            )
+            raise
+
     # --- connection ------------------------------------------------------
-    async def create_connect_link(
+    async def connect(
         self,
         session: AsyncSession,
         user: TelegramUser,
         *,
-        purpose: ConnectTicketPurpose = ConnectTicketPurpose.CONNECT,
-        portal_account_id: uuid.UUID | None = None,
-        suggested_label: str | None = None,
-    ) -> ConnectLink:
-        """Issue a short-lived, single-use HTTPS connection ticket."""
-        if not user.has_consented:
-            raise ConsentRequiredError("consent is required before connecting an account")
-        # The per-user budget complements the per-IP one: a single account must
-        # not be able to hammer the portal from many addresses.
-        await self.enforce_connect_rate_limit(session, scope="user", subject=user.id.hex)
-        accounts = PortalAccountRepository(session)
-        if purpose is ConnectTicketPurpose.CONNECT:
-            existing = await accounts.count_for_user(user.id)
-            if existing >= self._settings.max_portal_accounts_per_user:
-                raise QuotaExceededError(
-                    "the maximum number of portal accounts has been reached",
-                    limit=str(self._settings.max_portal_accounts_per_user),
-                )
-        tickets = ConnectTicketRepository(session)
-        await tickets.invalidate_for_user(user.id)
-        token = generate_token()
-        ticket = await tickets.create(
-            user_id=user.id,
-            token=token,
-            purpose=purpose,
-            ttl_minutes=self._settings.connect_ticket_ttl_minutes,
-            portal_account_id=portal_account_id,
-            suggested_label=suggested_label,
-        )
-        return ConnectLink(
-            url=self._settings.connect_url(token),
-            expires_in_minutes=self._settings.connect_ticket_ttl_minutes,
-            ticket_id=ticket.id,
-        )
-
-    async def load_ticket(self, session: AsyncSession, token: str) -> ConnectTicket:
-        """Resolve a connection ticket, rejecting expired or consumed ones."""
-        tickets = ConnectTicketRepository(session)
-        ticket = await tickets.get_by_token(token)
-        if ticket is None:
-            raise NotFoundError("connection ticket is unknown")
-        if ticket.consumed_at is not None:
-            raise AlreadyConsumedError("connection ticket was already used")
-        if ticket.expires_at <= utc_now():
-            raise ExpiredError("connection ticket expired")
-        if ticket.failure_count >= self._settings.connect_max_failures:
-            raise RateLimitedError("too many failed attempts for this ticket")
-        return ticket
-
-    async def register_ticket_failure(self, session: AsyncSession, ticket: ConnectTicket) -> bool:
-        """Count a failed attempt and warn the user when the ticket is locked."""
-        tickets = ConnectTicketRepository(session)
-        await tickets.register_failure(ticket)
-        if ticket.failure_count < self._settings.connect_max_failures:
-            return False
-        await tickets.consume(ticket)
-        user = await UserRepository(session).get(ticket.telegram_user_id)
-        if user is not None and self._notifications is not None:
-            await self._notifications.queue(
-                session,
-                user=user,
-                event_type=NotificationEventType.REAUTH_REQUIRED,
-                subject=f"{ticket.id.hex}:locked",
-                payload={
-                    "account_id": ticket.id.hex,
-                    "watch_name": ticket.suggested_label or "",
-                    "error_code": "CONNECT_TICKET_LOCKED",
-                },
-            )
-        logger.warning(
-            "connect ticket locked after repeated failures",
-            extra={"event_code": "CONNECT_TICKET_LOCKED"},
-        )
-        return True
-
-    async def enforce_connect_rate_limit(
-        self, session: AsyncSession, *, scope: str, subject: str
-    ) -> None:
-        """Apply the sliding rate limit protecting the public connect form."""
-        limits = ConnectRateLimitRepository(session)
-        now = utc_now()
-        window_start = now.replace(minute=0, second=0, microsecond=0)
-        exceeded = await limits.hit(
-            scope=scope,
-            subject_hash=fingerprint_subject(subject),
-            window_start=window_start,
-            limit=self._settings.connect_rate_limit_per_hour,
-        )
-        if exceeded:
-            raise RateLimitedError("too many connection attempts", retry_after_seconds=3600)
-
-    async def complete_connection(
-        self,
-        session: AsyncSession,
-        *,
-        ticket: ConnectTicket,
         label: str,
         email: str,
         password: str,
     ) -> PortalAccount:
-        """Verify credentials against the portal and store them encrypted.
+        """Verify the credentials against the portal and store them encrypted.
 
-        Nothing is persisted before the portal confirms the login, and the
-        ticket is consumed regardless of the outcome of this call.
+        Nothing is persisted before the portal confirms the login.
         """
-        cleaned_label = label.strip()[:MAX_LABEL_LENGTH]
-        if not cleaned_label:
-            raise ValidationError("a label is required")
-        if "@" not in email or len(email) > 254:
-            raise ValidationError("the e-mail address is not valid")
-        if not password:
-            raise ValidationError("the password is required")
+        cleaned_label = clean_label(label)
+        cleaned_email = clean_email(email)
+        check_password(password)
 
         accounts = PortalAccountRepository(session)
-        tickets = ConnectTicketRepository(session)
-        encryption = get_encryption()
+        if await accounts.find_by_email(user.id, cleaned_email) is not None:
+            raise ConflictError("this portal account is already connected")
 
-        if ticket.purpose is ConnectTicketPurpose.CONNECT:
-            duplicate = await accounts.find_by_email(ticket.telegram_user_id, email)
-            if duplicate is not None:
-                await tickets.consume(ticket)
-                raise ConflictError("this portal account is already connected")
-
-        credentials = PortalCredentials(email=email, password=password)
-        try:
-            cookies, metadata = await self._sessions.verify_credentials(
-                credentials, account_key=ticket.id.hex
-            )
-        except AuthenticationFailed:
-            await self.register_ticket_failure(session, ticket)
-            raise
-
-        if ticket.purpose is ConnectTicketPurpose.REAUTH and ticket.portal_account_id is not None:
-            account = await accounts.get(ticket.portal_account_id)
-            if account is None:
-                raise NotFoundError("portal account no longer exists")
-            await accounts.rotate_credentials(
-                account,
-                email=email,
-                password=password,
-                encryption_key_version=encryption.active_key_version,
-            )
-        else:
-            account = await accounts.create(
-                user_id=ticket.telegram_user_id,
-                label=cleaned_label,
-                email=email,
-                password=password,
-                encryption_key_version=encryption.active_key_version,
-            )
+        cookies, metadata = await self._verify(session, user, cleaned_email, password)
+        account = await accounts.create(
+            user_id=user.id,
+            label=cleaned_label,
+            email=cleaned_email,
+            password=password,
+            encryption_key_version=get_encryption().active_key_version,
+        )
         await accounts.store_session(account, cookies=cookies, metadata=metadata)
-        await tickets.consume(ticket)
+        await self.sync_patients(session, account)
+        logger.info(
+            "portal account connected",
+            extra={"event_code": "ACCOUNT_CONNECTED", "account_id": account.id.hex},
+        )
+        return account
+
+    async def reauthenticate(
+        self,
+        session: AsyncSession,
+        user: TelegramUser,
+        account: PortalAccount,
+        *,
+        email: str,
+        password: str,
+    ) -> PortalAccount:
+        """Replace the stored credentials and resume the suspended monitors."""
+        cleaned_email = clean_email(email)
+        check_password(password)
+
+        accounts = PortalAccountRepository(session)
+        cookies, metadata = await self._verify(session, user, cleaned_email, password)
+        await accounts.rotate_credentials(
+            account,
+            email=cleaned_email,
+            password=password,
+            encryption_key_version=get_encryption().active_key_version,
+        )
+        await accounts.store_session(account, cookies=cookies, metadata=metadata)
         await self.sync_patients(session, account)
         await self._resume_watches(session, account)
         logger.info(
-            "portal account connected",
-            extra={
-                "event_code": "ACCOUNT_CONNECTED",
-                "account_id": account.id.hex,
-                "purpose": ticket.purpose.value,
-            },
+            "portal credentials refreshed",
+            extra={"event_code": "ACCOUNT_REAUTHENTICATED", "account_id": account.id.hex},
         )
         return account
+
+    async def _verify(
+        self, session: AsyncSession, user: TelegramUser, email: str, password: str
+    ) -> tuple[dict[str, str], dict[str, object]]:
+        credentials = PortalCredentials(email=email, password=password)
+        try:
+            return await self._sessions.verify_credentials(credentials, account_key=user.id.hex)
+        except AuthenticationFailed:
+            await self._register_failure(session, user)
+            raise
 
     async def _resume_watches(self, session: AsyncSession, account: PortalAccount) -> int:
         """Reactivate the monitors paused by a previous authentication failure."""
@@ -287,10 +271,7 @@ class AccountService:
         return account
 
     async def rename(self, session: AsyncSession, account: PortalAccount, *, label: str) -> None:
-        cleaned = label.strip()[:MAX_LABEL_LENGTH]
-        if not cleaned:
-            raise ValidationError("a label is required")
-        await PortalAccountRepository(session).rename(account, cleaned)
+        await PortalAccountRepository(session).rename(account, clean_label(label))
 
     async def set_enabled(
         self, session: AsyncSession, account: PortalAccount, *, enabled: bool
@@ -349,7 +330,7 @@ class AccountService:
         return PatientSyncResult(synchronised=len(seen), deactivated=deactivated)
 
     async def remove(self, session: AsyncSession, account: PortalAccount) -> int:
-        """Soft delete an account after suspending its monitors."""
+        """Soft delete an account after removing its monitors."""
         watches = WatchRepository(session)
         suspended = await watches.suspend_for_account(account.id, reason="ACCOUNT_REMOVED")
         for watch in suspended:

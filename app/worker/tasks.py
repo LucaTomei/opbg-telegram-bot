@@ -13,8 +13,6 @@ from app.config import Settings
 from app.db.models.watches import BookingWatch
 from app.db.repositories.accounts import (
     ConnectRateLimitRepository,
-    ConnectTicketRepository,
-    DownloadTokenRepository,
     PatientRepository,
     PortalAccountRepository,
 )
@@ -647,8 +645,6 @@ class CleanupTask:
     async def run(self, session: AsyncSession, *, now: datetime | None = None) -> dict[str, int]:
         moment = now or utc_now()
         return {
-            "connect_tickets": await ConnectTicketRepository(session).purge_expired(before=moment),
-            "download_links": await DownloadTokenRepository(session).purge_expired(before=moment),
             "confirmation_nonces": await ConfirmationNonceRepository(session).purge_expired(
                 before=moment
             ),

@@ -579,7 +579,7 @@ async def _delegated_pdf(
         correlation_id=correlation_id,
     )
     try:
-        await container.appointments.download_pdf(session, appointment=appointment)
+        document = await container.appointments.download_pdf(session, appointment=appointment)
     except PdfUnavailable:
         await container.notifications.queue(
             session,
@@ -591,12 +591,11 @@ async def _delegated_pdf(
             correlation_id=correlation_id,
         )
         return f"{texts.ADMIN_ACTION_DONE}\n{texts.APPOINTMENT_PDF_UNAVAILABLE}"
-    url = await container.appointments.issue_download_link(
-        session, user=owner, appointment=appointment, issued_by_admin_id=admin.id
-    )
     return (
         f"{texts.ADMIN_ACTION_DONE}\n"
-        f"Link monouso valido {container.settings.pdf_link_ttl_minutes} minuti:\n{url}"
+        f"Promemoria disponibile: <code>{escape(document.filename)}</code> "
+        f"({document.size} byte). Inviaglielo tu, oppure chiedigli di scaricarlo "
+        "da <b>Appuntamenti</b>."
     )
 
 
@@ -1274,6 +1273,7 @@ async def show_system(
             texts.ADMIN_SYSTEM_TITLE,
             f"Versione applicativa: <b>{escape(status.app_version)}</b>",
             f"Schema database: <b>{escape(status.schema_version)}</b>",
+            f"Ambiente: <b>{escape(status.environment)}</b>",
             "",
             f"Utenti: {escape(users_summary or '-')}",
             f"Account portale: <b>{status.accounts_total}</b> "

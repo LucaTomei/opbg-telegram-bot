@@ -225,18 +225,9 @@ def test_no_sensitive_column_is_stored_in_plaintext() -> None:
     assert offenders == []
 
 
-def test_the_web_surface_exposes_only_the_expected_routes() -> None:
-    """No administrative API may be reachable over HTTP."""
-    import re
-
-    sources = "\n".join(
-        path.read_text(encoding="utf-8") for path in (ROOT / "app" / "web" / "routes").rglob("*.py")
-    )
-    routes = set(re.findall(r'@router\.(?:get|post)\("([^"]+)"', sources))
-    assert routes == {
-        "/connect/{token}",
-        "/download/{token}",
-        "/health/live",
-        "/health/ready",
-        "/version",
-    }
+def test_no_web_surface_is_exposed() -> None:
+    """Everything is handled by the bot: no HTTP server ships with the app."""
+    assert not (ROOT / "app" / "web").exists()
+    assert not (ROOT / "app" / "main_web.py").exists()
+    modules = {path.name for path in (ROOT / "app").rglob("main_*.py")}
+    assert modules == {"main_bot.py", "main_worker.py"}

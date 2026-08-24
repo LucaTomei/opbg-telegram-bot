@@ -1,10 +1,10 @@
 """Initial schema.
 
-Creates every table required by the OPBG Telegram booking assistant: users and
-invites, portal accounts and patients, conversation state, booking drafts,
-availability monitors, booking and cancellation attempts, the appointment
-cache, the notification queue, the append-only administrative audit trail and
-the operational tables (system events, worker heartbeats, circuit breakers).
+Creates the whole database: users and invites, portal accounts and patients,
+searches, watches and their filters, booking and cancellation attempts,
+appointments, notifications, and the operational tables that replace Redis
+(leases, heartbeats, circuit breakers, rate limits, confirmation nonces and
+callback consumptions).
 
 Revision ID: 0001_initial
 Revises:
@@ -40,9 +40,6 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(), nullable=False),
         sa.Column("updated_at", sa.DateTime(), nullable=False),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_backup_status")),
-        mysql_engine="InnoDB",
-        mysql_charset="utf8mb4",
-        mysql_collate="utf8mb4_0900_ai_ci",
     )
     op.create_table(
         "connect_rate_limits",
@@ -60,9 +57,6 @@ def upgrade() -> None:
             "window_start",
             name=op.f("uq_connect_rate_limits_scope_subject_hash_window_start"),
         ),
-        mysql_engine="InnoDB",
-        mysql_charset="utf8mb4",
-        mysql_collate="utf8mb4_0900_ai_ci",
     )
     op.create_index(
         op.f("ix_connect_rate_limits_window_start"),
@@ -80,9 +74,6 @@ def upgrade() -> None:
         sa.Column("outcome", sa.String(length=24), nullable=False),
         sa.Column("id", app.db.types.UuidBinary(length=16), nullable=False),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_portal_call_logs")),
-        mysql_engine="InnoDB",
-        mysql_charset="utf8mb4",
-        mysql_collate="utf8mb4_0900_ai_ci",
     )
     op.create_index("ix_portal_call_logs_created", "portal_call_logs", ["created_at"], unique=False)
     op.create_table(
@@ -114,13 +105,6 @@ def upgrade() -> None:
         sa.Column("notifications_enabled", sa.Boolean(), nullable=False),
         sa.Column("quiet_hours_start", sa.Time(), nullable=True),
         sa.Column("quiet_hours_end", sa.Time(), nullable=True),
-        sa.Column(
-            "pdf_delivery_mode",
-            sa.Enum(
-                "TELEGRAM", "ONE_TIME_LINK", name="pdfdeliverymode", native_enum=False, length=24
-            ),
-            nullable=False,
-        ),
         sa.Column("page_size", sa.Integer(), nullable=False),
         sa.Column("max_slots_shown", sa.Integer(), nullable=False),
         sa.Column("consent_version", sa.String(length=16), nullable=True),
@@ -132,9 +116,6 @@ def upgrade() -> None:
         sa.Column("version", sa.BigInteger(), nullable=False),
         sa.Column("deleted_at", sa.DateTime(), nullable=True),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_telegram_users")),
-        mysql_engine="InnoDB",
-        mysql_charset="utf8mb4",
-        mysql_collate="utf8mb4_0900_ai_ci",
     )
     op.create_index(op.f("ix_telegram_users_status"), "telegram_users", ["status"], unique=False)
     op.create_index(
@@ -152,9 +133,6 @@ def upgrade() -> None:
         sa.Column("updated_at", sa.DateTime(), nullable=False),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_worker_heartbeats")),
         sa.UniqueConstraint("worker_id", name=op.f("uq_worker_heartbeats_worker_id")),
-        mysql_engine="InnoDB",
-        mysql_charset="utf8mb4",
-        mysql_collate="utf8mb4_0900_ai_ci",
     )
     op.create_index(
         op.f("ix_worker_heartbeats_last_seen_at"),
@@ -206,9 +184,6 @@ def upgrade() -> None:
             ondelete="RESTRICT",
         ),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_admin_audit_log")),
-        mysql_engine="InnoDB",
-        mysql_charset="utf8mb4",
-        mysql_collate="utf8mb4_0900_ai_ci",
     )
     op.create_index(
         "ix_admin_audit_log_admin_created",
@@ -238,9 +213,6 @@ def upgrade() -> None:
         ),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_callback_consumptions")),
         sa.UniqueConstraint("dedup_key", name=op.f("uq_callback_consumptions_dedup_key")),
-        mysql_engine="InnoDB",
-        mysql_charset="utf8mb4",
-        mysql_collate="utf8mb4_0900_ai_ci",
     )
     op.create_index(
         op.f("ix_callback_consumptions_expires_at"),
@@ -267,7 +239,7 @@ def upgrade() -> None:
         sa.Column("opened_at", sa.DateTime(), nullable=True),
         sa.Column("reopen_at", sa.DateTime(), nullable=True),
         sa.Column("last_failure_code", sa.String(length=64), nullable=True),
-        sa.Column("half_open_token", sa.BINARY(length=16), nullable=True),
+        sa.Column("half_open_probe", sa.BINARY(length=16), nullable=True),
         sa.Column("overridden_by_user_id", app.db.types.UuidBinary(length=16), nullable=True),
         sa.Column("override_reason", sa.String(length=255), nullable=True),
         sa.Column("id", app.db.types.UuidBinary(length=16), nullable=False),
@@ -283,9 +255,6 @@ def upgrade() -> None:
         sa.UniqueConstraint(
             "scope", "subject_key", name=op.f("uq_circuit_breakers_scope_subject_key")
         ),
-        mysql_engine="InnoDB",
-        mysql_charset="utf8mb4",
-        mysql_collate="utf8mb4_0900_ai_ci",
     )
     op.create_table(
         "confirmation_nonces",
@@ -330,9 +299,6 @@ def upgrade() -> None:
         ),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_confirmation_nonces")),
         sa.UniqueConstraint("nonce_hash", name=op.f("uq_confirmation_nonces_nonce_hash")),
-        mysql_engine="InnoDB",
-        mysql_charset="utf8mb4",
-        mysql_collate="utf8mb4_0900_ai_ci",
     )
     op.create_index(
         op.f("ix_confirmation_nonces_expires_at"),
@@ -362,9 +328,6 @@ def upgrade() -> None:
             ondelete="CASCADE",
         ),
         sa.PrimaryKeyConstraint("telegram_user_id", name=op.f("pk_conversation_states")),
-        mysql_engine="InnoDB",
-        mysql_charset="utf8mb4",
-        mysql_collate="utf8mb4_0900_ai_ci",
     )
     op.create_index(
         op.f("ix_conversation_states_expires_at"),
@@ -392,9 +355,6 @@ def upgrade() -> None:
         ),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_invite_codes")),
         sa.UniqueConstraint("code_hash", name=op.f("uq_invite_codes_code_hash")),
-        mysql_engine="InnoDB",
-        mysql_charset="utf8mb4",
-        mysql_collate="utf8mb4_0900_ai_ci",
     )
     op.create_index(
         op.f("ix_invite_codes_expires_at"), "invite_codes", ["expires_at"], unique=False
@@ -449,9 +409,6 @@ def upgrade() -> None:
             "deleted_marker",
             name="uq_portal_accounts_user_email_alive",
         ),
-        mysql_engine="InnoDB",
-        mysql_charset="utf8mb4",
-        mysql_collate="utf8mb4_0900_ai_ci",
     )
     op.create_index(
         op.f("ix_portal_accounts_email_blind_index"),
@@ -482,59 +439,10 @@ def upgrade() -> None:
             ondelete="CASCADE",
         ),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_user_settings_audit")),
-        mysql_engine="InnoDB",
-        mysql_charset="utf8mb4",
-        mysql_collate="utf8mb4_0900_ai_ci",
     )
     op.create_index(
         op.f("ix_user_settings_audit_telegram_user_id"),
         "user_settings_audit",
-        ["telegram_user_id"],
-        unique=False,
-    )
-    op.create_table(
-        "connect_tickets",
-        sa.Column("telegram_user_id", app.db.types.UuidBinary(length=16), nullable=False),
-        sa.Column("token_hash", sa.BINARY(length=32), nullable=False),
-        sa.Column("csrf_hash", sa.BINARY(length=32), nullable=True),
-        sa.Column(
-            "purpose",
-            sa.Enum("CONNECT", "REAUTH", name="connectticketpurpose", native_enum=False, length=16),
-            nullable=False,
-        ),
-        sa.Column("portal_account_id", app.db.types.UuidBinary(length=16), nullable=True),
-        sa.Column("suggested_label", sa.String(length=64), nullable=True),
-        sa.Column("expires_at", sa.DateTime(), nullable=False),
-        sa.Column("consumed_at", sa.DateTime(), nullable=True),
-        sa.Column("failure_count", sa.Integer(), nullable=False),
-        sa.Column("request_fingerprint", sa.BINARY(length=32), nullable=True),
-        sa.Column("id", app.db.types.UuidBinary(length=16), nullable=False),
-        sa.Column("created_at", sa.DateTime(), nullable=False),
-        sa.Column("updated_at", sa.DateTime(), nullable=False),
-        sa.ForeignKeyConstraint(
-            ["portal_account_id"],
-            ["portal_accounts.id"],
-            name=op.f("fk_connect_tickets_portal_account_id_portal_accounts"),
-            ondelete="CASCADE",
-        ),
-        sa.ForeignKeyConstraint(
-            ["telegram_user_id"],
-            ["telegram_users.id"],
-            name=op.f("fk_connect_tickets_telegram_user_id_telegram_users"),
-            ondelete="CASCADE",
-        ),
-        sa.PrimaryKeyConstraint("id", name=op.f("pk_connect_tickets")),
-        sa.UniqueConstraint("token_hash", name=op.f("uq_connect_tickets_token_hash")),
-        mysql_engine="InnoDB",
-        mysql_charset="utf8mb4",
-        mysql_collate="utf8mb4_0900_ai_ci",
-    )
-    op.create_index(
-        op.f("ix_connect_tickets_expires_at"), "connect_tickets", ["expires_at"], unique=False
-    )
-    op.create_index(
-        op.f("ix_connect_tickets_telegram_user_id"),
-        "connect_tickets",
         ["telegram_user_id"],
         unique=False,
     )
@@ -564,9 +472,6 @@ def upgrade() -> None:
             "telegram_user_id",
             name=op.f("uq_invite_redemptions_invite_id_telegram_user_id"),
         ),
-        mysql_engine="InnoDB",
-        mysql_charset="utf8mb4",
-        mysql_collate="utf8mb4_0900_ai_ci",
     )
     op.create_table(
         "patients",
@@ -600,9 +505,6 @@ def upgrade() -> None:
             "external_tax_code_blind_index",
             name="uq_patients_account_tax_code",
         ),
-        mysql_engine="InnoDB",
-        mysql_charset="utf8mb4",
-        mysql_collate="utf8mb4_0900_ai_ci",
     )
     op.create_index(
         op.f("ix_patients_portal_account_id"), "patients", ["portal_account_id"], unique=False
@@ -654,9 +556,6 @@ def upgrade() -> None:
             ondelete="SET NULL",
         ),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_system_events")),
-        mysql_engine="InnoDB",
-        mysql_charset="utf8mb4",
-        mysql_collate="utf8mb4_0900_ai_ci",
     )
     op.create_index("ix_system_events_component", "system_events", ["component"], unique=False)
     op.create_index(
@@ -732,9 +631,6 @@ def upgrade() -> None:
             "portal_external_id",
             name=op.f("uq_appointments_cache_portal_account_id_portal_external_id"),
         ),
-        mysql_engine="InnoDB",
-        mysql_charset="utf8mb4",
-        mysql_collate="utf8mb4_0900_ai_ci",
     )
     op.create_index("ix_appointments_cache_status", "appointments_cache", ["status"], unique=False)
     op.create_index(
@@ -833,9 +729,6 @@ def upgrade() -> None:
             ondelete="CASCADE",
         ),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_booking_drafts")),
-        mysql_engine="InnoDB",
-        mysql_charset="utf8mb4",
-        mysql_collate="utf8mb4_0900_ai_ci",
     )
     op.create_index(
         op.f("ix_booking_drafts_expires_at"), "booking_drafts", ["expires_at"], unique=False
@@ -972,9 +865,6 @@ def upgrade() -> None:
             ondelete="CASCADE",
         ),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_booking_watches")),
-        mysql_engine="InnoDB",
-        mysql_charset="utf8mb4",
-        mysql_collate="utf8mb4_0900_ai_ci",
     )
     op.create_index(
         "ix_booking_watches_account_status",
@@ -1072,13 +962,13 @@ def upgrade() -> None:
             ["portal_account_id"],
             ["portal_accounts.id"],
             name=op.f("fk_booking_attempts_portal_account_id_portal_accounts"),
-            ondelete="CASCADE",
+            ondelete="RESTRICT",
         ),
         sa.ForeignKeyConstraint(
             ["telegram_user_id"],
             ["telegram_users.id"],
             name=op.f("fk_booking_attempts_telegram_user_id_telegram_users"),
-            ondelete="CASCADE",
+            ondelete="RESTRICT",
         ),
         sa.ForeignKeyConstraint(
             ["watch_id"],
@@ -1091,9 +981,6 @@ def upgrade() -> None:
         sa.UniqueConstraint(
             "watch_slot_success_key", name="uq_booking_attempts_watch_slot_success"
         ),
-        mysql_engine="InnoDB",
-        mysql_charset="utf8mb4",
-        mysql_collate="utf8mb4_0900_ai_ci",
     )
     op.create_index(
         "ix_booking_attempts_account_status",
@@ -1145,65 +1032,18 @@ def upgrade() -> None:
             ["portal_account_id"],
             ["portal_accounts.id"],
             name=op.f("fk_cancellation_attempts_portal_account_id_portal_accounts"),
-            ondelete="CASCADE",
+            ondelete="RESTRICT",
         ),
         sa.ForeignKeyConstraint(
             ["telegram_user_id"],
             ["telegram_users.id"],
             name=op.f("fk_cancellation_attempts_telegram_user_id_telegram_users"),
-            ondelete="CASCADE",
+            ondelete="RESTRICT",
         ),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_cancellation_attempts")),
         sa.UniqueConstraint(
             "idempotency_key", name=op.f("uq_cancellation_attempts_idempotency_key")
         ),
-        mysql_engine="InnoDB",
-        mysql_charset="utf8mb4",
-        mysql_collate="utf8mb4_0900_ai_ci",
-    )
-    op.create_table(
-        "download_tokens",
-        sa.Column("telegram_user_id", app.db.types.UuidBinary(length=16), nullable=False),
-        sa.Column("appointment_id", app.db.types.UuidBinary(length=16), nullable=False),
-        sa.Column("token_hash", sa.BINARY(length=32), nullable=False),
-        sa.Column("expires_at", sa.DateTime(), nullable=False),
-        sa.Column("consumed_at", sa.DateTime(), nullable=True),
-        sa.Column("issued_by_admin_id", app.db.types.UuidBinary(length=16), nullable=True),
-        sa.Column("id", app.db.types.UuidBinary(length=16), nullable=False),
-        sa.Column("created_at", sa.DateTime(), nullable=False),
-        sa.Column("updated_at", sa.DateTime(), nullable=False),
-        sa.ForeignKeyConstraint(
-            ["appointment_id"],
-            ["appointments_cache.id"],
-            name=op.f("fk_download_tokens_appointment_id_appointments_cache"),
-            ondelete="CASCADE",
-        ),
-        sa.ForeignKeyConstraint(
-            ["issued_by_admin_id"],
-            ["telegram_users.id"],
-            name=op.f("fk_download_tokens_issued_by_admin_id_telegram_users"),
-            ondelete="SET NULL",
-        ),
-        sa.ForeignKeyConstraint(
-            ["telegram_user_id"],
-            ["telegram_users.id"],
-            name=op.f("fk_download_tokens_telegram_user_id_telegram_users"),
-            ondelete="CASCADE",
-        ),
-        sa.PrimaryKeyConstraint("id", name=op.f("pk_download_tokens")),
-        sa.UniqueConstraint("token_hash", name=op.f("uq_download_tokens_token_hash")),
-        mysql_engine="InnoDB",
-        mysql_charset="utf8mb4",
-        mysql_collate="utf8mb4_0900_ai_ci",
-    )
-    op.create_index(
-        op.f("ix_download_tokens_expires_at"), "download_tokens", ["expires_at"], unique=False
-    )
-    op.create_index(
-        op.f("ix_download_tokens_telegram_user_id"),
-        "download_tokens",
-        ["telegram_user_id"],
-        unique=False,
     )
     op.create_table(
         "seen_slots",
@@ -1227,9 +1067,6 @@ def upgrade() -> None:
         sa.UniqueConstraint(
             "watch_id", "slot_fingerprint", name=op.f("uq_seen_slots_watch_id_slot_fingerprint")
         ),
-        mysql_engine="InnoDB",
-        mysql_charset="utf8mb4",
-        mysql_collate="utf8mb4_0900_ai_ci",
     )
     op.create_index(
         op.f("ix_seen_slots_last_seen_at"), "seen_slots", ["last_seen_at"], unique=False
@@ -1261,9 +1098,6 @@ def upgrade() -> None:
             "portal_location_id",
             name=op.f("uq_watch_locations_watch_id_portal_location_id"),
         ),
-        mysql_engine="InnoDB",
-        mysql_charset="utf8mb4",
-        mysql_collate="utf8mb4_0900_ai_ci",
     )
     op.create_table(
         "watch_run_logs",
@@ -1277,7 +1111,6 @@ def upgrade() -> None:
         sa.Column("correlation_id", sa.String(length=32), nullable=True),
         sa.Column("worker_id", sa.String(length=64), nullable=True),
         sa.Column("duration_ms", sa.Integer(), nullable=True),
-        sa.Column("lease_token", sa.BINARY(length=16), nullable=True),
         sa.Column("id", app.db.types.UuidBinary(length=16), nullable=False),
         sa.ForeignKeyConstraint(
             ["watch_id"],
@@ -1286,9 +1119,6 @@ def upgrade() -> None:
             ondelete="CASCADE",
         ),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_watch_run_logs")),
-        mysql_engine="InnoDB",
-        mysql_charset="utf8mb4",
-        mysql_collate="utf8mb4_0900_ai_ci",
     )
     op.create_index(
         "ix_watch_run_logs_watch_started",
@@ -1382,9 +1212,6 @@ def upgrade() -> None:
             ondelete="CASCADE",
         ),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_notification_events")),
-        mysql_engine="InnoDB",
-        mysql_charset="utf8mb4",
-        mysql_collate="utf8mb4_0900_ai_ci",
     )
     op.create_index(
         "ix_notification_events_dedup", "notification_events", ["dedup_key"], unique=True
@@ -1404,42 +1231,31 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    """Drop the whole schema.
-
-    Individual ``DROP INDEX`` statements are not used because MySQL refuses to
-    remove an index that still backs a foreign key; the tables are dropped in
-    reverse dependency order with the checks disabled instead.
-    """
-    bind = op.get_bind()
-    bind.exec_driver_sql("SET FOREIGN_KEY_CHECKS = 0")
-    for table in (
-        "watch_run_logs",
-        "seen_slots",
-        "watch_locations",
-        "notification_events",
-        "cancellation_attempts",
-        "booking_attempts",
-        "download_tokens",
-        "appointments_cache",
-        "booking_drafts",
-        "booking_watches",
-        "callback_consumptions",
-        "confirmation_nonces",
-        "conversation_states",
-        "connect_tickets",
-        "patients",
-        "portal_accounts",
-        "user_settings_audit",
-        "invite_redemptions",
-        "invite_codes",
-        "admin_audit_log",
-        "circuit_breakers",
-        "system_events",
-        "worker_heartbeats",
-        "portal_call_logs",
-        "connect_rate_limits",
-        "backup_status",
-        "telegram_users",
-    ):
-        op.execute(sa.text(f"DROP TABLE IF EXISTS `{table}`"))
-    bind.exec_driver_sql("SET FOREIGN_KEY_CHECKS = 1")
+    # Dropping a table removes its indexes as well, and the reverse creation
+    # order removes every child before the row it references, so no foreign
+    # key is left dangling.
+    op.drop_table("notification_events")
+    op.drop_table("watch_run_logs")
+    op.drop_table("watch_locations")
+    op.drop_table("seen_slots")
+    op.drop_table("cancellation_attempts")
+    op.drop_table("booking_attempts")
+    op.drop_table("booking_watches")
+    op.drop_table("booking_drafts")
+    op.drop_table("appointments_cache")
+    op.drop_table("system_events")
+    op.drop_table("patients")
+    op.drop_table("invite_redemptions")
+    op.drop_table("user_settings_audit")
+    op.drop_table("portal_accounts")
+    op.drop_table("invite_codes")
+    op.drop_table("conversation_states")
+    op.drop_table("confirmation_nonces")
+    op.drop_table("circuit_breakers")
+    op.drop_table("callback_consumptions")
+    op.drop_table("admin_audit_log")
+    op.drop_table("worker_heartbeats")
+    op.drop_table("telegram_users")
+    op.drop_table("portal_call_logs")
+    op.drop_table("connect_rate_limits")
+    op.drop_table("backup_status")
