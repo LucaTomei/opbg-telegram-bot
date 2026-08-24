@@ -7,21 +7,36 @@
 #
 #   docker compose -f compose.yaml -f compose.dev.yaml up -d
 #
-# which is what `make up` does.
+# which is what the Makefile does. Here the image is built from the working tree
+# and tagged locally, so it is never confused with the published one.
+x-dev-image: &dev-image
+  image: opbg-telegram-bot:dev
+  build:
+    context: .
+    dockerfile: Dockerfile
+
+x-dev-environment: &dev-environment
+  APP_ENV: development
+  APP_LOG_LEVEL: DEBUG
+
 services:
   mysql:
     ports:
       # Published only in development so tests can reach the disposable server.
       - "127.0.0.1:13306:3306"
 
+  migrate:
+    <<: *dev-image
+
   bot:
-    environment:
-      APP_ENV: development
-      APP_LOG_LEVEL: DEBUG
+    <<: *dev-image
+    environment: *dev-environment
     read_only: false
 
   worker:
-    environment:
-      APP_ENV: development
-      APP_LOG_LEVEL: DEBUG
+    <<: *dev-image
+    environment: *dev-environment
     read_only: false
+
+  backup:
+    <<: *dev-image

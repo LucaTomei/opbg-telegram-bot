@@ -220,14 +220,16 @@ ripristinato, fermando prima `bot` e `worker`.
 
 ```bash
 docker compose --profile backup run --rm backup
-docker compose build
-docker compose run --rm migrate
+docker compose pull
 docker compose up -d
 docker compose ps
 docker compose exec bot python -m app.cli healthcheck
 ```
 
-Rollback applicativo: ripristinare l'immagine precedente e riavviare. Il
+`up` esegue `migrate` e ne aspetta la fine prima di avviare `bot` e `worker`.
+
+Rollback applicativo: fissare `OPBG_TAG=sha-<commit>` nel file di ambiente e
+riavviare. Il
 downgrade dello schema esiste ma **cancella le tabelle**:
 
 ```bash

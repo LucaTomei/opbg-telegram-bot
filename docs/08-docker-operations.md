@@ -5,8 +5,12 @@
 Il deploy si compone di:
 
 - `Dockerfile` multi-stage non-root;
-- `compose.yaml` per la produzione;
-- `compose.dev.yaml` per lo sviluppo, applicato solo esplicitamente;
+- immagine pubblicata su un registry dalla pipeline, con tag `latest` e
+  `sha-<commit>`;
+- `compose.yaml` per la produzione, che esegue l'immagine pubblicata senza
+  costruirla;
+- `compose.dev.yaml` per lo sviluppo, applicato solo esplicitamente, che
+  aggiunge la build dal sorgente;
 - entrypoint sicuro;
 - script migrazioni, backup, restore, health e key generation;
 - `Makefile` o task runner con comandi documentati;
@@ -75,7 +79,7 @@ Il README finale deve documentare equivalenti di:
 
 ```bash
 cp .env.example .env
-docker compose build
+docker compose pull
 docker compose up -d
 docker compose ps
 docker compose logs --tail=200 bot worker
@@ -96,7 +100,7 @@ Non inserire mai segreti nei comandi di esempio.
 ## Aggiornamento
 
 1. backup verificato;
-2. pull/build nuova immagine;
+2. pull della nuova immagine;
 3. esecuzione migrazioni;
 4. restart servizi;
 5. health e smoke test;

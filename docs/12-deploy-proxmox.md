@@ -5,6 +5,8 @@ esempio un Minisforum MS-01. Il bot usa long polling: non serve nessuna porta
 in ingresso, nessun dominio, nessun certificato. Serve solo traffico in uscita
 verso `api.telegram.org` e verso il portale.
 
+- [Deploy senza repository](#deploy-senza-repository)
+- [Deploy dal repository](#deploy-dal-repository)
 - [Su un PCT Docker già esistente](#su-un-pct-docker-già-esistente)
 - [1. Creare il container](#1-creare-il-container)
 - [2. Preparare il sistema](#2-preparare-il-sistema)
@@ -19,8 +21,10 @@ verso `api.telegram.org` e verso il portale.
 
 ## Su un PCT Docker già esistente
 
-Se hai già un container con Docker e una cartella di stack, salta i passi 1-3 e
-parti dal 4, con due accortezze.
+Se hai già un container con Docker e una cartella di stack, i passi 1-3 non ti
+servono: parti da [Deploy senza repository](#deploy-senza-repository), oppure
+dal passo 4 se vuoi costruire l'immagine sull'host. In entrambi i casi, due
+accortezze.
 
 **Spazio negli indirizzi Docker.** Ogni stack crea una rete bridge e Docker le
 assegna una `/16` da un pool predefinito che ne contiene sedici. Su un host con
@@ -42,6 +46,99 @@ tutti i container dell'host: fallo in una finestra tranquilla.
 stanno in `compose.dev.yaml`, che Compose non carica da solo. `docker compose
 up -d` usa solo `compose.yaml`, non pubblica porte e applica le migrazioni prima
 di avviare `bot` e `worker`.
+
+## Deploy senza repository
+
+La pipeline pubblica l'immagine su GitHub Container Registry a ogni push su
+`main` che superi i test, con due tag: `latest` e `sha-<commit>`. Un
+deployment la scarica e basta: niente sorgente sull'host, niente build, niente
+compilatore. È il modo consigliato, e l'unico praticabile da un'interfaccia
+grafica come Arcane, Portainer o Dockge.
+
+### Credenziali del registry
+
+Il pacchetto eredita la visibilità del repository, quindi è privato. L'host
+deve autenticarsi una volta sola, con un token GitHub che abbia il solo
+permesso `read:packages`:
+
+```bash
+echo '<token>' | docker login ghcr.io -u LucaTomei --password-stdin
+```
+
+Le credenziali finiscono in `~/.docker/config.json` e non scadono finché il
+token è valido. In alternativa il pacchetto può essere reso pubblico dalla
+pagina del package su GitHub, e allora nessun login serve: l'immagine però
+contiene tutto il codice applicativo.
+
+### Lo stack
+
+Servono due file nella cartella del progetto, `compose.yaml` e `.env`. Il primo
+è quello del repository, usato tale e quale: non contiene nulla di specifico
+per una macchina. Puoi farlo clonare all'interfaccia, oppure incollarlo nel suo
+editor — in quel caso ricorda che una copia incollata non si aggiorna da sola.
+
+Il secondo contiene i segreti, generati sull'host come descritto in
+[5. Generare i segreti](#5-generare-i-segreti). Due variabili facoltative
+scelgono l'immagine:
+
+```dotenv
+OPBG_IMAGE=ghcr.io/lucatomei/opbg-telegram-bot
+OPBG_TAG=latest
+```
+
+`OPBG_TAG=sha-<commit>` blocca lo stack su una versione esatta ed è il modo
+per tornare indietro.
+
+### Avvio e aggiornamento
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+`up` esegue `migrate` e ne aspetta la fine prima di avviare `bot` e `worker`,
+quindi funziona anche al primo avvio su un database vuoto. Un aggiornamento è
+la stessa coppia di comandi: `pull` porta il nuovo `latest`, `up -d` applica le
+migrazioni e ricrea i container cambiati.
+
+Dall'interfaccia corrispondono al pulsante di redeploy con l'opzione «pull
+image» attiva. **Senza quell'opzione il redeploy riavvia l'immagine vecchia**:
+Compose non riscarica un tag che ha già in locale.
+
+### Backup senza repository
+
+Gli script di backup e restore viaggiano dentro l'immagine, quindi il profilo
+`backup` funziona anche qui:
+
+```bash
+docker compose --profile backup run --rm backup
+```
+
+Se l'interfaccia non gestisce i profili, il job si lancia da solo, senza
+Compose, purché veda la rete e il volume dello stack:
+
+```bash
+docker run --rm \
+  --network opbg-telegram-bot_backend \
+  --volume opbg-telegram-bot_backup-data:/backups \
+  --env-file /percorso/dello/stack/.env \
+  --env MYSQL_ROOT_PASSWORD \
+  --entrypoint /opt/backup/backup.sh \
+  ghcr.io/lucatomei/opbg-telegram-bot:latest
+```
+
+## Deploy dal repository
+
+Serve solo per sviluppare sull'host o per costruire un'immagine che non passi
+dal registry. In quel caso il file di sviluppo va richiesto esplicitamente,
+perché aggiunge la build dal sorgente:
+
+```bash
+docker compose -f compose.yaml -f compose.dev.yaml build
+docker compose -f compose.yaml -f compose.dev.yaml up -d
+```
+
+`compose.yaml` da solo non costruisce niente: punta all'immagine pubblicata.
 
 ## 1. Creare il container
 
@@ -130,6 +227,10 @@ molto disco: vedi [Diagnosi](#diagnosi).
 
 ## 4. Portare il codice nel container
 
+> Questo passo serve solo se vuoi costruire l'immagine sull'host. Per il modo
+> consigliato salta a [Deploy senza repository](#deploy-senza-repository): non
+> serve nessun clone.
+
 Il repository è privato, quindi serve una deploy key di sola lettura, generata
 **dentro** il container:
 
@@ -202,14 +303,13 @@ chmod 600 .env
 ## 6. Primo avvio
 
 ```bash
-docker compose build
+docker compose -f compose.yaml -f compose.dev.yaml build
 docker compose up -d
 ```
 
 `up` esegue `migrate` e aspetta che finisca prima di avviare `bot` e `worker`,
-quindi un solo comando basta anche al primo avvio. Su un aggiornamento, però,
-`up` **non** ricostruisce l'immagine se il tag esiste già: `build` va eseguito
-prima, sempre.
+quindi un solo comando basta anche al primo avvio. Il file di sviluppo serve
+solo alla build: l'avvio usa `compose.yaml` da solo.
 
 I container hanno `restart: unless-stopped` e Docker parte al boot, quindi il
 container LXC creato con `--onboot 1` riporta su tutto da solo dopo un riavvio
@@ -273,15 +373,15 @@ La procedura di restore è in [`11-runbook.md`](11-runbook.md#restore).
 
 ```bash
 cd /opt/docker/stacks/opbg-telegram-bot
-docker compose --profile backup run --rm backup   # 1. backup verificato
-git pull                                          # 2. nuovo codice
-docker compose build                              # 3. nuova immagine
-docker compose up -d                              # 4. migrazioni e restart
-docker compose ps                                 # 5. health
+docker compose --profile backup run --rm backup                  # 1. backup
+git pull                                                         # 2. sorgente
+docker compose -f compose.yaml -f compose.dev.yaml build         # 3. immagine
+docker compose up -d                                             # 4. restart
+docker compose ps                                                # 5. health
 ```
 
-Per tornare indietro: `git checkout <tag-precedente>`, ricostruisci e riavvia.
-Non fare un downgrade del database senza averlo pianificato.
+Per tornare indietro: `git checkout <commit>`, ricostruisci e riavvia. Non fare
+un downgrade del database senza averlo pianificato.
 
 Ogni tanto libera spazio dalle immagini vecchie:
 
@@ -334,22 +434,3 @@ docker compose logs worker --tail=100
 ```
 
 Poi, da Telegram, **Amministrazione → Stato sistema**.
-
-## Deploy da un'interfaccia Docker
-
-Uno stack gestito da una UI (Arcane, Portainer, Dockge) funziona senza
-adattamenti, a tre condizioni.
-
-1. **La UI deve clonare tutto il repository**, non il solo `compose.yaml`: il
-   servizio applicativo ha una `build`, quindi servono `Dockerfile`, `app/`,
-   `alembic/` e `scripts/`.
-2. **Le variabili vanno nel `.env` del progetto.** Nessun segreto va scritto
-   dentro `compose.yaml`, che è versionato.
-3. **Su ogni aggiornamento va forzata la ricostruzione dell'immagine.** Compose
-   costruisce solo quando il tag manca: dopo un `git pull` il tag
-   `opbg-telegram-bot:1.0.0` esiste già e un semplice redeploy riavvierebbe il
-   codice vecchio. Se la UI non offre un'opzione di rebuild, esegui
-   `docker compose build` da shell prima del redeploy.
-
-Il profilo `backup` non è pensato per una UI: resta un job di cron sull'host,
-come descritto sopra.

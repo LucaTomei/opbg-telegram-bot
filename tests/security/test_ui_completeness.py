@@ -150,6 +150,9 @@ def test_every_documented_variable_exists_in_the_settings() -> None:
         "backup_retention_days",
         "backup_passphrase",
         "backup_passphrase_file",
+        # Select the published image to run; never reach the process.
+        "opbg_image",
+        "opbg_tag",
     }
     assert documented - known == set()
 

@@ -99,10 +99,18 @@ Non serve un dominio, né un certificato, né aprire porte sul router.
 ```bash
 cp .env.example .env
 make keys                 # genera i segreti e incollali in .env
-docker compose build
+docker compose pull       # scarica l'immagine pubblicata su GHCR
 docker compose up -d      # applica le migrazioni, poi avvia bot e worker
 docker compose ps
 docker compose logs --tail=200 bot worker
+```
+
+`compose.yaml` non costruisce niente: punta all'immagine che la pipeline
+pubblica su GitHub Container Registry a ogni push su `main` che superi i test.
+Per costruirla dal sorgente serve il file di sviluppo:
+
+```bash
+make build                # docker compose -f compose.yaml -f compose.dev.yaml build
 ```
 
 Poi, da Telegram:
@@ -120,6 +128,7 @@ importanti:
 
 | Variabile | Descrizione |
 | --- | --- |
+| `OPBG_IMAGE`, `OPBG_TAG` | Immagine da eseguire; per impostazione predefinita `ghcr.io/lucatomei/opbg-telegram-bot:latest` |
 | `APP_ENCRYPTION_KEY` | Chiave AES-256 per i dati a riposo. **Perderla rende illeggibili credenziali e pazienti.** |
 | `APP_BLIND_INDEX_KEY` | Chiave separata per gli indici di ricerca sui campi cifrati |
 | `APP_SECRET_KEY` | Pepe applicativo per gli hash di inviti e nonce di conferma |
@@ -187,13 +196,13 @@ Aggiornamento:
 
 ```bash
 docker compose --profile backup run --rm backup   # 1. backup verificato
-docker compose build                              # 2. nuova immagine
+docker compose pull                               # 2. nuova immagine
 docker compose up -d                              # 3. migrazioni e restart
 docker compose ps                                 # 4. health
 ```
 
-Rollback applicativo: ripristinare il tag precedente dell'immagine e
-riavviare. Non eseguire un downgrade distruttivo del database senza averlo
+Rollback applicativo: fissare `OPBG_TAG=sha-<commit>` nel file di ambiente e
+riavviare — ogni build pubblicata è taggata anche con il proprio commit. Non eseguire un downgrade distruttivo del database senza averlo
 pianificato; la procedura è descritta nel runbook.
 
 ## Sicurezza

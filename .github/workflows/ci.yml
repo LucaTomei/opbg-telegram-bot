@@ -145,10 +145,22 @@ jobs:
 
   image:
     name: Immagine Docker
-    needs: changes
-    if: needs.changes.outputs.image == 'true'
+    needs: [changes, quality]
+    # Runs when the image content changed, but never publishes an image whose
+    # tests failed. `always()` is required because `quality` is skipped when the
+    # change does not touch the code.
+    if: >-
+      always()
+      && needs.changes.outputs.image == 'true'
+      && needs.quality.result != 'failure'
+      && needs.quality.result != 'cancelled'
     runs-on: [self-hosted, linux, x64, docker]
     timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    env:
+      REGISTRY_IMAGE: ghcr.io/${{ github.repository_owner }}/opbg-telegram-bot
     steps:
       - uses: actions/checkout@v4
         with:
@@ -169,10 +181,27 @@ jobs:
           MYSQL_PASSWORD: ci-database-password
           MYSQL_ROOT_PASSWORD: ci-root-password
         run: docker compose -f compose.yaml config >/dev/null
+      - name: Publish to the registry
+        # Only from main, and only after the tests. Deployments pull
+        # ':latest'; ':sha-<commit>' pins a rollback to an exact commit.
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          set -euo pipefail
+          SHA_TAG="sha-$(git rev-parse --short HEAD)"
+          echo "${{ secrets.GITHUB_TOKEN }}" \
+            | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          for tag in latest "$SHA_TAG"; do
+            docker tag opbg-telegram-bot:ci "${REGISTRY_IMAGE}:${tag}"
+            docker push "${REGISTRY_IMAGE}:${tag}"
+            docker image rm -f "${REGISTRY_IMAGE}:${tag}" || true
+          done
+          echo "published ${REGISTRY_IMAGE}:latest and :${SHA_TAG}"
+
       - name: Reclaim disk space
         # The runner keeps everything it builds, so the image produced here and
-        # the layers left behind by buildx go away at the end of every run.
+        # the layers left behind go away at the end of every run.
         if: always()
         run: |
+          docker logout ghcr.io || true
           docker image rm -f opbg-telegram-bot:ci || true
           docker builder prune --force --keep-storage 2GB || true

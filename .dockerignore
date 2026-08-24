@@ -42,7 +42,10 @@ build/
 # Project files not needed at runtime
 docs/
 tests/
+# The backup profile runs from the image, so its two scripts are part of it.
 scripts/
+!scripts/backup.sh
+!scripts/restore.sh
 logs/
 tmp/
 data/

@@ -50,7 +50,7 @@ Tutti i comandi sono stati eseguiti il 2026-08-24 sulla revisione corrente.
 | Suite completa | `pytest` | ✅ 566 passati, 5 deselezionati |
 | Copertura | `pytest --cov=app` | ✅ 79% complessivo (soglia documentata: 70%) |
 | Compose config | `docker compose config` | ✅ configurazione valida |
-| Build immagine | `docker compose build` | ✅ `opbg-telegram-bot:1.0.0` |
+| Build immagine | `docker compose -f compose.yaml -f compose.dev.yaml build` | ✅ `opbg-telegram-bot:dev`, con gli script di backup inclusi |
 | Migrazione da DB vuoto | `docker compose down -v && docker compose run --rm migrate` | ✅ `→ 0001_initial` |
 | Migrazione reversibile | `alembic upgrade head && alembic downgrade base && alembic upgrade head` | ✅ 25 tabelle create, rimosse e ricreate |
 | Schema allineato ai modelli | `alembic check` | ✅ `No new upgrade operations detected` |
@@ -63,7 +63,7 @@ Tutti i comandi sono stati eseguiti il 2026-08-24 sulla revisione corrente.
 | Guardrail su Linux | `make audit-ci` | ✅ scanner eseguiti in un container identico al runner |
 | Audit bottoni | `python scripts/handler_audit.py` | ✅ 103 payload di callback, tutti gestiti |
 | Configurazione senza voci morte | `pytest tests/security/test_ui_completeness.py` | ✅ ogni variabile dichiarata è usata e ogni variabile documentata esiste |
-| CI | `.github/workflows/ci.yml` | ✅ job `guardrails` (secret e placeholder scan), `quality` (formato, lint, tipi, audit bottoni, test con soglia 70%), `image` (build e `compose config`); i test live restano deselezionati |
+| CI | `.github/workflows/ci.yml` | ✅ job `changes` (filtro sui file toccati), `guardrails` (secret e placeholder scan), `quality` (formato, lint, tipi, audit bottoni, test con soglia 70%), `image` (build, `compose config` e pubblicazione su GHCR solo da `main` e solo dopo i test); i test live restano deselezionati |
 
 ### Copertura sulle parti critiche
 

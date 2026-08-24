@@ -1,10 +1,9 @@
 name: opbg-telegram-bot
 
+# The published image. A deployment pulls it: no repository, no build, no
+# compiler on the host. Development builds it locally through compose.dev.yaml.
 x-app-image: &app-image
-  build:
-    context: .
-    dockerfile: Dockerfile
-  image: opbg-telegram-bot:1.0.0
+  image: ${OPBG_IMAGE:-ghcr.io/lucatomei/opbg-telegram-bot}:${OPBG_TAG:-latest}
 
 x-app-environment: &app-environment
   APP_ENV: ${APP_ENV:-production}
@@ -160,8 +159,6 @@ services:
       BACKUP_PASSPHRASE_FILE: ${BACKUP_PASSPHRASE_FILE:-/run/secrets/backup_passphrase}
       BACKUP_PASSPHRASE: ${BACKUP_PASSPHRASE:-}
     volumes:
-      - ./scripts/backup.sh:/opt/backup/backup.sh:ro
-      - ./scripts/restore.sh:/opt/backup/restore.sh:ro
       - backup-data:/backups
     networks: [backend]
     depends_on:
