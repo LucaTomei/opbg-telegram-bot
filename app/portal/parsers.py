@@ -12,7 +12,7 @@ import re
 import unicodedata
 from collections.abc import Iterable, Mapping, Sequence
 from datetime import date, datetime, time
-from typing import Any
+from typing import Any, Final
 
 from selectolax.parser import HTMLParser, Node
 
@@ -704,29 +704,50 @@ def parse_slot_selection_form(html: str, proposal_code: str) -> HtmlForm:
     raise PortalContractChanged("no form found for the requested proposal")
 
 
+#: The radio that stands for "every location" rather than for a location.
+LOCATION_ALL: Final[str] = "location-all"
+#: Each real location radio is valued ``location-<id>``.
+LOCATION_PREFIX: Final[str] = "location-"
+
+
+def _label_for(document: HTMLParser, element: Node) -> str:
+    """The visible label of a form control, by ``for`` or by ``data-label``."""
+    element_id = element.attributes.get("id")
+    if element_id:
+        label = document.css_first(f'label[for="{element_id}"]')
+        if label is not None:
+            return normalize_text(label.text(strip=True))
+    return normalize_text(element.attributes.get("data-label") or "")
+
+
 def parse_location_options(html: str) -> tuple[PortalLocation, ...]:
     """Read the selectable locations rendered after the search choice.
 
-    The portal exposes them either as checkboxes named ``idUnitaErogante[]`` or
-    as a ``<select>``; both shapes are handled, and an empty result simply means
-    the availability endpoint must resolve the locations itself.
+    The portal renders one radio per location, named ``location`` and valued
+    ``location-<id>``, plus a ``location-all`` entry that stands for "every
+    location" and is not one itself. Older shapes named ``idUnitaErogante`` and
+    a plain ``<select>`` are still handled.
+
+    An empty result simply means the availability endpoint must resolve the
+    locations itself.
     """
     document = HTMLParser(html)
     locations: dict[str, str] = {}
+
+    for element in document.css('input[name="location"]'):
+        raw = normalize_text(element.attributes.get("value") or "")
+        if not raw or raw == LOCATION_ALL:
+            continue
+        value = raw.removeprefix(LOCATION_PREFIX)
+        if not value:
+            continue
+        locations[value] = _label_for(document, element) or value
 
     for element in document.css('input[name="idUnitaErogante[]"], input[name="idUnitaErogante"]'):
         value = normalize_text(element.attributes.get("value") or "")
         if not value:
             continue
-        label = ""
-        element_id = element.attributes.get("id")
-        if element_id:
-            label_node = document.css_first(f'label[for="{element_id}"]')
-            if label_node is not None:
-                label = normalize_text(label_node.text(strip=True))
-        if not label:
-            label = normalize_text(element.attributes.get("data-label") or "")
-        locations[value] = label or value
+        locations.setdefault(value, _label_for(document, element) or value)
 
     for select in document.css('select[name="idUnitaErogante[]"], select[name="idUnitaErogante"]'):
         for option in select.css("option"):

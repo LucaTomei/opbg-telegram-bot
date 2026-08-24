@@ -29,11 +29,27 @@ LIVE_ENABLED = os.environ.get("OPBG_LIVE_TESTS") == "1"
 LIVE_EMAIL = os.environ.get("OPBG_LIVE_EMAIL", "")
 LIVE_PASSWORD = os.environ.get("OPBG_LIVE_PASSWORD", "")
 LIVE_QUERY = os.environ.get("OPBG_LIVE_QUERY", "visita")
+#: Empty means "whatever the application ships as its default". The host is
+#: deliberately not written here: a guard test forbids naming the real portal
+#: anywhere under tests/.
+LIVE_BASE_URL = os.environ.get("OPBG_LIVE_BASE_URL", "")
 
 requires_live = pytest.mark.skipif(
     not (LIVE_ENABLED and LIVE_EMAIL and LIVE_PASSWORD),
     reason="live portal tests are opt-in; set OPBG_LIVE_TESTS=1 and the credentials",
 )
+
+
+@pytest.fixture
+def live_settings(settings: Settings) -> Settings:
+    """Point at the portal the application ships as its default.
+
+    The shared fixture is pinned to a synthetic host so that no test can reach
+    the real one by accident. These tests are the exception, and they take the
+    address from the application rather than repeating it here.
+    """
+    base_url = LIVE_BASE_URL or str(Settings.model_fields["portal_base_url"].default)
+    return settings.model_copy(update={"portal_base_url": base_url})
 
 
 def live_client(settings: Settings) -> PortalClient:
@@ -48,8 +64,8 @@ def live_client(settings: Settings) -> PortalClient:
 
 
 @requires_live
-async def test_login_and_session_verification(settings: Settings) -> None:
-    client = live_client(settings)
+async def test_login_and_session_verification(live_settings: Settings) -> None:
+    client = live_client(live_settings)
     async with client.session(account_key="live") as session:
         result = await client.login(session, PortalCredentials(LIVE_EMAIL, LIVE_PASSWORD))
         assert result.verified is True
@@ -57,8 +73,8 @@ async def test_login_and_session_verification(settings: Settings) -> None:
 
 
 @requires_live
-async def test_patients_and_autocomplete_are_readable(settings: Settings) -> None:
-    client = live_client(settings)
+async def test_patients_and_autocomplete_are_readable(live_settings: Settings) -> None:
+    client = live_client(live_settings)
     async with client.session(account_key="live") as session:
         await client.login(session, PortalCredentials(LIVE_EMAIL, LIVE_PASSWORD))
         patients = await client.open_lapi_wizard(session)
@@ -69,8 +85,8 @@ async def test_patients_and_autocomplete_are_readable(settings: Settings) -> Non
 
 
 @requires_live
-async def test_availability_is_readable(settings: Settings) -> None:
-    client = live_client(settings)
+async def test_availability_is_readable(live_settings: Settings) -> None:
+    client = live_client(live_settings)
     async with client.session(account_key="live") as session:
         await client.login(session, PortalCredentials(LIVE_EMAIL, LIVE_PASSWORD))
         patients = await client.open_lapi_wizard(session)
@@ -90,8 +106,8 @@ async def test_availability_is_readable(settings: Settings) -> None:
 
 
 @requires_live
-async def test_appointment_list_is_readable(settings: Settings) -> None:
-    client = live_client(settings)
+async def test_appointment_list_is_readable(live_settings: Settings) -> None:
+    client = live_client(live_settings)
     async with client.session(account_key="live") as session:
         await client.login(session, PortalCredentials(LIVE_EMAIL, LIVE_PASSWORD))
         appointments = await client.list_appointments(session)
@@ -99,15 +115,15 @@ async def test_appointment_list_is_readable(settings: Settings) -> None:
 
 
 @requires_live
-async def test_pdf_of_an_explicitly_selected_appointment(settings: Settings) -> None:
+async def test_pdf_of_an_explicitly_selected_appointment(live_settings: Settings) -> None:
     """Downloads the reminder of the appointment named in the environment."""
     appointment_id = os.environ.get("OPBG_LIVE_APPOINTMENT_ID", "")
     if not appointment_id:
         pytest.skip("set OPBG_LIVE_APPOINTMENT_ID to exercise the PDF download")
-    client = live_client(settings)
+    client = live_client(live_settings)
     async with client.session(account_key="live") as session:
         await client.login(session, PortalCredentials(LIVE_EMAIL, LIVE_PASSWORD))
         document = await client.download_pdf(
-            session, appointment_id=appointment_id, max_bytes=settings.pdf_max_bytes
+            session, appointment_id=appointment_id, max_bytes=live_settings.pdf_max_bytes
         )
         assert document.content.startswith(b"%PDF-")

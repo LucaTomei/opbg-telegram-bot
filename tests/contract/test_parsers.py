@@ -211,6 +211,25 @@ def test_location_options_are_read_from_checkboxes() -> None:
     }
 
 
+def test_location_options_are_read_from_the_radio_group() -> None:
+    """The portal renders one radio per location, valued ``location-<id>``.
+
+    The identifier carries a prefix and the group opens with a ``location-all``
+    entry that stands for every location rather than for one.
+    """
+    locations = parsers.parse_location_options(load("appointments_create_location_radios.html"))
+    assert {(item.location_id, item.name) for item in locations} == {
+        ("3001", "Sede Gamma"),
+        ("3002", "Sede Delta"),
+    }
+
+
+def test_the_every_location_radio_is_not_a_location() -> None:
+    locations = parsers.parse_location_options(load("appointments_create_location_radios.html"))
+    assert "all" not in {item.location_id for item in locations}
+    assert "location-all" not in {item.location_id for item in locations}
+
+
 def test_session_fields_are_preserved_between_steps() -> None:
     fields = parsers.parse_session_service_fields(load("appointments_create_locations.html"))
     assert fields["session_id_prestazione"] == "9001"

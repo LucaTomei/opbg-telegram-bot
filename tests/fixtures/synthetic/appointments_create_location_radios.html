@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="csrf-token" content="SYNTHETIC-META-CSRF-0009">
+</head>
+<body>
+  <a href="/logout">Esci</a>
+  <form method="POST" action="/appointments/create" id="appointment-form">
+    <input type="hidden" name="_token" value="SYNTHETIC-FORM-CSRF-0009">
+    <input type="hidden" name="session_id_prestazione" value="9100">
+    <input type="hidden" name="session_name_prestazione" value="VISITA SINTETICA RADIO">
+    <input type="hidden" name="selected_date" value="">
+    <input type="hidden" name="id_proposal" value="">
+    <input type="hidden" name="location_name" value="">
+    <input type="hidden" name="location_details" value="">
+
+    <div class="form-check">
+      <input class="form-check-input check-avaibility-filter" type="radio"
+             name="location" id="location-all" value="location-all">
+      <label for="location-all">Tutte le sedi</label>
+    </div>
+    <div class="form-check">
+      <input class="form-check-input check-avaibility-filter" type="radio"
+             name="location" id="location-3001" value="location-3001">
+      <label for="location-3001">Sede Gamma</label>
+    </div>
+    <div class="form-check">
+      <input class="form-check-input check-avaibility-filter" type="radio"
+             name="location" id="location-3002" value="location-3002">
+      <label for="location-3002">Sede Delta</label>
+    </div>
+
+    <input type="text" name="avaibility_date_from" value="">
+    <input type="text" name="avaibility_date_to" value="">
+    <button type="submit">Continua</button>
+  </form>
+</body>
+</html>
