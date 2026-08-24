@@ -142,20 +142,30 @@ async def named_lock(
 ) -> AsyncIterator[None]:
     """Acquire a MySQL named lock for the duration of the block.
 
-    Named locks give a cluster-wide mutex without Redis.  They are used to make
+    Named locks give a cluster-wide mutex without Redis, and are used to make
     sure a single mutating portal sequence runs per account at a time.
+
+    The lock lives on a dedicated connection rather than on the caller's
+    session: a MySQL named lock belongs to the connection that took it, and a
+    commit inside the block would hand the session a different connection,
+    leaving the lock held for ever by a pooled one.
     """
     lock_name = _normalize_lock_name(name)
-    acquired = await session.scalar(
-        text("SELECT GET_LOCK(:name, :timeout)"),
-        {"name": lock_name, "timeout": timeout_seconds},
-    )
-    if acquired != 1:
-        raise LockUnavailableError("could not acquire the named lock", lock=lock_name)
-    try:
-        yield
-    finally:
-        await session.execute(text("SELECT RELEASE_LOCK(:name)"), {"name": lock_name})
+    bind = session.bind
+    if not isinstance(bind, AsyncEngine):  # pragma: no cover - misconfiguration
+        raise LockUnavailableError("the session is not bound to an async engine")
+
+    async with bind.connect() as connection:
+        acquired = await connection.scalar(
+            text("SELECT GET_LOCK(:name, :timeout)"),
+            {"name": lock_name, "timeout": timeout_seconds},
+        )
+        if acquired != 1:
+            raise LockUnavailableError("could not acquire the named lock", lock=lock_name)
+        try:
+            yield
+        finally:
+            await connection.exec_driver_sql(f"SELECT RELEASE_LOCK('{lock_name}')")
 
 
 async def execute_scalar(session: AsyncSession, statement: str, **params: Any) -> Any:

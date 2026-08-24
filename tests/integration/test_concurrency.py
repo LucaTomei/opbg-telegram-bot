@@ -268,3 +268,39 @@ async def test_audit_never_stores_a_secret(
     for row in rows:
         assert "password" not in (row.reason or "")
         assert row.before_hash != "ACTIVE"
+
+
+async def test_a_commit_inside_the_lock_does_not_leak_it(
+    clean_session: AsyncSession, engine: AsyncEngine, user: TelegramUser
+) -> None:
+    """A named lock must survive — and be released after — a commit.
+
+    MySQL named locks belong to the connection that took them, so a commit in
+    the middle of the block used to hand the lock to a pooled connection and
+    leave it held for ever.
+    """
+    account = await make_account(clean_session, user)
+    await clean_session.commit()
+    factory = create_session_factory(engine)
+
+    async with factory() as holder, account_lock(holder, account.id):
+        await holder.commit()
+
+    # A second acquisition proves the lock was really released.
+    async with factory() as competitor, account_lock(competitor, account.id):
+        pass
+
+
+async def test_the_lock_is_released_when_the_block_raises(
+    clean_session: AsyncSession, engine: AsyncEngine, user: TelegramUser
+) -> None:
+    account = await make_account(clean_session, user)
+    await clean_session.commit()
+    factory = create_session_factory(engine)
+
+    with pytest.raises(RuntimeError):
+        async with factory() as holder, account_lock(holder, account.id):
+            raise RuntimeError("synthetic failure inside the lock")
+
+    async with factory() as competitor, account_lock(competitor, account.id):
+        pass

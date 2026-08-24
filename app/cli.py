@@ -136,7 +136,8 @@ async def _record_backup(args: argparse.Namespace) -> int:
     return 0
 
 
-def main(argv: list[str] | None = None) -> int:
+def build_parser() -> argparse.ArgumentParser:
+    """Build the command line parser; kept separate so tests can reuse it."""
     parser = argparse.ArgumentParser(prog="opbg", description="Operational commands")
     parser.add_argument("--version", action="version", version=APP_VERSION)
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -152,24 +153,34 @@ def main(argv: list[str] | None = None) -> int:
     backup.add_argument("--artifact", default=None)
     backup.add_argument("--size", type=int, default=None)
     backup.add_argument("--error", default=None)
+    return parser
 
+
+async def run_command(argv: list[str] | None = None) -> int:
+    """Parse the arguments and execute the requested command."""
+    parser = build_parser()
     args = parser.parse_args(argv)
     configure_logging(service="cli", level=get_settings().app_log_level)
 
-    if args.command == "migrate":
-        return asyncio.run(_migrate())
+    handlers = {
+        "migrate": _migrate,
+        "healthcheck": _healthcheck,
+        "bootstrap-admins": _bootstrap_admins,
+        "cleanup": _cleanup,
+    }
+    handler = handlers.get(args.command)
+    if handler is not None:
+        return await handler()
     if args.command == "downgrade":
-        return asyncio.run(_downgrade(args.target))
-    if args.command == "healthcheck":
-        return asyncio.run(_healthcheck())
-    if args.command == "bootstrap-admins":
-        return asyncio.run(_bootstrap_admins())
-    if args.command == "cleanup":
-        return asyncio.run(_cleanup())
+        return await _downgrade(args.target)
     if args.command == "record-backup":
-        return asyncio.run(_record_backup(args))
+        return await _record_backup(args)
     parser.error(f"unknown command: {args.command}")
     return 2
+
+
+def main(argv: list[str] | None = None) -> int:
+    return asyncio.run(run_command(argv))
 
 
 if __name__ == "__main__":

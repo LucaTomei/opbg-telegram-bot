@@ -7,6 +7,7 @@ Integration tests require a disposable MySQL instance; its URL comes from
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import os
 import uuid
@@ -92,15 +93,33 @@ def integration_database_url() -> str:
     return os.environ.get("TEST_DATABASE_URL", DEFAULT_TEST_DATABASE_URL)
 
 
+def _upgrade_schema(url: str) -> None:
+    """Apply the committed migrations, exactly as a deployment would."""
+    from alembic import command
+    from alembic.config import Config
+
+    config = Config("alembic.ini")
+    config.set_main_option("script_location", "alembic")
+    config.set_main_option("sqlalchemy.url", url.replace("+aiomysql", "+pymysql"))
+    command.upgrade(config, "head")
+
+
 @pytest.fixture(scope="session")
 async def engine() -> AsyncIterator[AsyncEngine]:
-    """Create the schema once per session on a disposable MySQL database."""
+    """Migrate a disposable MySQL database once per session.
+
+    The suite runs against the migrated schema rather than ``create_all`` so a
+    divergence between the models and the migrations fails the tests.
+    """
     url = integration_database_url()
     engine = create_async_engine(url, pool_pre_ping=True, future=True)
     try:
         async with engine.begin() as connection:
+            await connection.exec_driver_sql("SET FOREIGN_KEY_CHECKS = 0")
             await connection.run_sync(Base.metadata.drop_all)
-            await connection.run_sync(Base.metadata.create_all)
+            await connection.exec_driver_sql("DROP TABLE IF EXISTS alembic_version")
+            await connection.exec_driver_sql("SET FOREIGN_KEY_CHECKS = 1")
+        await asyncio.to_thread(_upgrade_schema, url)
     except Exception as exc:  # pragma: no cover - environment dependent
         await engine.dispose()
         pytest.skip(f"integration database is not available: {type(exc).__name__}")
