@@ -12,6 +12,7 @@ from alembic.config import Config
 from sqlalchemy import create_engine, text
 
 from app.db.base import Base
+from app.version import SCHEMA_VERSION
 from tests.conftest import integration_database_url
 
 MIGRATION_DATABASE = "opbg_bot_migrations"
@@ -123,7 +124,29 @@ def test_migration_is_idempotent(migration_database: str) -> None:
     with engine.connect() as connection:
         revision = connection.execute(text("SELECT version_num FROM alembic_version")).scalar()
     engine.dispose()
-    assert revision == "0001_initial"
+    assert revision == SCHEMA_VERSION
+
+
+def test_the_booking_history_is_protected_from_cascading_deletes(
+    migration_database: str,
+) -> None:
+    """Deleting an owner must never wipe the record of a portal mutation."""
+    command.upgrade(alembic_config(migration_database), "head")
+    engine = create_engine(migration_database, future=True)
+    with engine.connect() as connection:
+        rows = connection.execute(
+            text(
+                "SELECT table_name, delete_rule FROM information_schema.referential_constraints "
+                "WHERE constraint_schema = :schema "
+                "AND table_name IN ('booking_attempts', 'cancellation_attempts')"
+            ),
+            {"schema": MIGRATION_DATABASE},
+        ).all()
+    engine.dispose()
+    rules = {(table, rule) for table, rule in rows}
+    assert ("booking_attempts", "RESTRICT") in rules
+    assert ("cancellation_attempts", "RESTRICT") in rules
+    assert ("booking_attempts", "CASCADE") not in rules
 
 
 def test_environment_variable_can_target_another_server() -> None:

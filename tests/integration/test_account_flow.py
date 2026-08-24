@@ -14,10 +14,12 @@ from app.db.repositories.accounts import (
     PortalAccountRepository,
 )
 from app.db.repositories.base import utc_now
+from app.db.repositories.notifications import NotificationRepository
 from app.db.repositories.watches import WatchRepository
 from app.db.session import Database
 from app.domain.enums import (
     ConnectTicketPurpose,
+    NotificationEventType,
     PortalAccountStatus,
     UserStatus,
     WatchStatus,
@@ -281,3 +283,59 @@ async def test_patient_sync_deactivates_missing_patients(
     reloaded = await patients.get(extra.id)
     assert reloaded is not None
     assert reloaded.active is False
+
+
+async def test_a_ticket_is_locked_and_the_user_warned_after_repeated_failures(
+    clean_session: AsyncSession,
+    container: Container,
+    user: TelegramUser,
+    database: Database,
+    portal: FakePortal,
+) -> None:
+    """Repeated wrong passwords must burn the ticket and warn the user."""
+    from tests.support.portal import build_container, make_settings
+
+    strict = build_container(
+        make_settings(container.settings, connect_max_failures=2), database, portal
+    )
+    link = await strict.accounts.create_connect_link(clean_session, user)
+    token = link.url.rsplit("/", 1)[-1]
+
+    for _ in range(2):
+        ticket = await ConnectTicketRepository(clean_session).get_by_token(token)
+        assert ticket is not None
+        with pytest.raises(AuthenticationFailed):
+            await strict.accounts.complete_connection(
+                session=clean_session,
+                ticket=ticket,
+                label="Account",
+                email=VALID_EMAIL,
+                password="password-sbagliata",
+            )
+
+    with pytest.raises((RateLimitedError, AlreadyConsumedError)):
+        await strict.accounts.load_ticket(clean_session, token)
+
+    events = await NotificationRepository(clean_session).list_for_user(
+        user.id, page=0, page_size=10
+    )
+    assert events.total == 1
+    assert events.items[0].event_type is NotificationEventType.REAUTH_REQUIRED
+
+
+async def test_the_connect_link_is_rate_limited_per_user(
+    clean_session: AsyncSession,
+    container: Container,
+    user: TelegramUser,
+    database: Database,
+    portal: FakePortal,
+) -> None:
+    from tests.support.portal import build_container, make_settings
+
+    limited = build_container(
+        make_settings(container.settings, connect_rate_limit_per_hour=2), database, portal
+    )
+    for _ in range(2):
+        await limited.accounts.create_connect_link(clean_session, user)
+    with pytest.raises(RateLimitedError):
+        await limited.accounts.create_connect_link(clean_session, user)

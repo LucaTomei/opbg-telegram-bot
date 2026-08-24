@@ -218,6 +218,7 @@ def build_container(settings: Settings, database: Database, portal: FakePortal) 
     breaker = CircuitBreakerService(build_breaker_policy(settings))
     sessions = PortalSessionManager(settings, client, breaker)
     search = SearchService(settings, client, sessions)
+    notifications = NotificationService(settings)
     return Container(
         settings=settings,
         database=database,
@@ -226,12 +227,12 @@ def build_container(settings: Settings, database: Database, portal: FakePortal) 
         sessions=sessions,
         users=UserService(settings),
         invites=InviteService(settings),
-        accounts=AccountService(settings, client, sessions),
+        accounts=AccountService(settings, client, sessions, notifications),
         search=search,
         bookings=BookingService(settings, client, search),
         appointments=AppointmentService(settings, client, sessions),
         watches=WatchService(settings),
-        notifications=NotificationService(settings),
+        notifications=notifications,
         confirmations=ConfirmationService(settings),
         admin=AdminService(settings, breaker),
     )

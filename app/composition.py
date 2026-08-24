@@ -99,6 +99,7 @@ def build_container(
     sessions = PortalSessionManager(resolved, client, breaker)
     search = SearchService(resolved, client, sessions)
 
+    notifications = NotificationService(resolved)
     return Container(
         settings=resolved,
         database=db,
@@ -107,12 +108,12 @@ def build_container(
         sessions=sessions,
         users=UserService(resolved),
         invites=InviteService(resolved),
-        accounts=AccountService(resolved, client, sessions),
+        accounts=AccountService(resolved, client, sessions, notifications),
         search=search,
         bookings=BookingService(resolved, client, search),
         appointments=AppointmentService(resolved, client, sessions),
         watches=WatchService(resolved),
-        notifications=NotificationService(resolved),
+        notifications=notifications,
         confirmations=ConfirmationService(resolved),
         admin=AdminService(resolved, breaker),
     )

@@ -18,9 +18,11 @@ from app.db.repositories.accounts import (
     PortalAccountRepository,
 )
 from app.db.repositories.base import utc_now
+from app.db.repositories.users import UserRepository
 from app.db.repositories.watches import WatchRepository
 from app.domain.enums import (
     ConnectTicketPurpose,
+    NotificationEventType,
     PortalAccountStatus,
     WatchStatus,
 )
@@ -40,6 +42,7 @@ from app.portal.client import PortalClient
 from app.portal.models import PortalCredentials
 from app.security.context import get_encryption
 from app.security.tokens import generate_token
+from app.services.notifications import NotificationService
 from app.services.portal_sessions import PortalSessionManager
 
 logger = get_logger(__name__)
@@ -75,10 +78,12 @@ class AccountService:
         settings: Settings,
         client: PortalClient,
         sessions: PortalSessionManager,
+        notifications: NotificationService | None = None,
     ) -> None:
         self._settings = settings
         self._client = client
         self._sessions = sessions
+        self._notifications = notifications
 
     # --- connection ------------------------------------------------------
     async def create_connect_link(
@@ -93,6 +98,9 @@ class AccountService:
         """Issue a short-lived, single-use HTTPS connection ticket."""
         if not user.has_consented:
             raise ConsentRequiredError("consent is required before connecting an account")
+        # The per-user budget complements the per-IP one: a single account must
+        # not be able to hammer the portal from many addresses.
+        await self.enforce_connect_rate_limit(session, scope="user", subject=user.id.hex)
         accounts = PortalAccountRepository(session)
         if purpose is ConnectTicketPurpose.CONNECT:
             existing = await accounts.count_for_user(user.id)
@@ -131,6 +139,32 @@ class AccountService:
         if ticket.failure_count >= self._settings.connect_max_failures:
             raise RateLimitedError("too many failed attempts for this ticket")
         return ticket
+
+    async def register_ticket_failure(self, session: AsyncSession, ticket: ConnectTicket) -> bool:
+        """Count a failed attempt and warn the user when the ticket is locked."""
+        tickets = ConnectTicketRepository(session)
+        await tickets.register_failure(ticket)
+        if ticket.failure_count < self._settings.connect_max_failures:
+            return False
+        await tickets.consume(ticket)
+        user = await UserRepository(session).get(ticket.telegram_user_id)
+        if user is not None and self._notifications is not None:
+            await self._notifications.queue(
+                session,
+                user=user,
+                event_type=NotificationEventType.REAUTH_REQUIRED,
+                subject=f"{ticket.id.hex}:locked",
+                payload={
+                    "account_id": ticket.id.hex,
+                    "watch_name": ticket.suggested_label or "",
+                    "error_code": "CONNECT_TICKET_LOCKED",
+                },
+            )
+        logger.warning(
+            "connect ticket locked after repeated failures",
+            extra={"event_code": "CONNECT_TICKET_LOCKED"},
+        )
+        return True
 
     async def enforce_connect_rate_limit(
         self, session: AsyncSession, *, scope: str, subject: str
@@ -186,7 +220,7 @@ class AccountService:
                 credentials, account_key=ticket.id.hex
             )
         except AuthenticationFailed:
-            await tickets.register_failure(ticket)
+            await self.register_ticket_failure(session, ticket)
             raise
 
         if ticket.purpose is ConnectTicketPurpose.REAUTH and ticket.portal_account_id is not None:

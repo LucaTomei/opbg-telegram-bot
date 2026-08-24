@@ -42,11 +42,13 @@ class BookingAttempt(UuidPkMixin, TimestampMixin, VersionMixin, Base):
         Index("ix_booking_attempts_user_started", "telegram_user_id", "started_at"),
     )
 
+    # RESTRICT, not CASCADE: the booking history is evidence of a mutating
+    # action on the portal and must survive a careless delete of its owner.
     telegram_user_id: Mapped[uuid.UUID] = mapped_column(
-        UuidBinary, ForeignKey("telegram_users.id", ondelete="CASCADE"), nullable=False
+        UuidBinary, ForeignKey("telegram_users.id", ondelete="RESTRICT"), nullable=False
     )
     portal_account_id: Mapped[uuid.UUID] = mapped_column(
-        UuidBinary, ForeignKey("portal_accounts.id", ondelete="CASCADE"), nullable=False
+        UuidBinary, ForeignKey("portal_accounts.id", ondelete="RESTRICT"), nullable=False
     )
     patient_id: Mapped[uuid.UUID | None] = mapped_column(
         UuidBinary, ForeignKey("patients.id", ondelete="SET NULL"), default=None
@@ -139,11 +141,12 @@ class CancellationAttempt(UuidPkMixin, TimestampMixin, Base):
     __tablename__ = "cancellation_attempts"
     __table_args__ = (UniqueConstraint("idempotency_key"),)
 
+    # Same reasoning as BookingAttempt: a cancellation is a mutating action.
     telegram_user_id: Mapped[uuid.UUID] = mapped_column(
-        UuidBinary, ForeignKey("telegram_users.id", ondelete="CASCADE"), nullable=False
+        UuidBinary, ForeignKey("telegram_users.id", ondelete="RESTRICT"), nullable=False
     )
     portal_account_id: Mapped[uuid.UUID] = mapped_column(
-        UuidBinary, ForeignKey("portal_accounts.id", ondelete="CASCADE"), nullable=False
+        UuidBinary, ForeignKey("portal_accounts.id", ondelete="RESTRICT"), nullable=False
     )
     appointment_id: Mapped[uuid.UUID] = mapped_column(
         UuidBinary, ForeignKey("appointments_cache.id", ondelete="CASCADE"), nullable=False
