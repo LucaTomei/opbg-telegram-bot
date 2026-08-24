@@ -12,12 +12,10 @@ from logging.config import fileConfig
 
 from alembic import context
 from sqlalchemy import engine_from_config, pool
-from sqlalchemy.sql.sqltypes import _Binary
-from sqlalchemy.types import TypeEngine
 
 from app.config import get_settings
+from app.db.migrations import compare_type as _compare_type
 from app.db.models import Base
-from app.db.types import Ciphertext
 
 config = context.config
 
@@ -25,24 +23,6 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 target_metadata = Base.metadata
-
-
-def _compare_type(
-    context_: object,
-    inspected_column: object,
-    metadata_column: object,
-    inspected_type: TypeEngine[object],
-    metadata_type: TypeEngine[object],
-) -> bool | None:
-    """Treat every BLOB variant as equivalent to :class:`Ciphertext`.
-
-    MySQL maps a ``LargeBinary`` length to one of TINYBLOB/BLOB/MEDIUMBLOB, so
-    reflection never returns the declared type decorator.  Returning ``False``
-    here avoids an endless "type changed" diff on encrypted columns.
-    """
-    if isinstance(metadata_type, Ciphertext) and isinstance(inspected_type, _Binary):
-        return False
-    return None
 
 
 def _database_url() -> str:

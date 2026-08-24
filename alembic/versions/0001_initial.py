@@ -1404,72 +1404,42 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index("ix_notification_events_user_created", table_name="notification_events")
-    op.drop_index("ix_notification_events_pending", table_name="notification_events")
-    op.drop_index("ix_notification_events_dedup", table_name="notification_events")
-    op.drop_table("notification_events")
-    op.drop_index("ix_watch_run_logs_watch_started", table_name="watch_run_logs")
-    op.drop_table("watch_run_logs")
-    op.drop_table("watch_locations")
-    op.drop_index("ix_seen_slots_watch_available", table_name="seen_slots")
-    op.drop_index(op.f("ix_seen_slots_last_seen_at"), table_name="seen_slots")
-    op.drop_table("seen_slots")
-    op.drop_index(op.f("ix_download_tokens_telegram_user_id"), table_name="download_tokens")
-    op.drop_index(op.f("ix_download_tokens_expires_at"), table_name="download_tokens")
-    op.drop_table("download_tokens")
-    op.drop_table("cancellation_attempts")
-    op.drop_index("ix_booking_attempts_user_started", table_name="booking_attempts")
-    op.drop_index(op.f("ix_booking_attempts_slot_fingerprint"), table_name="booking_attempts")
-    op.drop_index("ix_booking_attempts_account_status", table_name="booking_attempts")
-    op.drop_table("booking_attempts")
-    op.drop_index("ix_booking_watches_user_status", table_name="booking_watches")
-    op.drop_index("ix_booking_watches_due", table_name="booking_watches")
-    op.drop_index("ix_booking_watches_account_status", table_name="booking_watches")
-    op.drop_table("booking_watches")
-    op.drop_index("ix_booking_drafts_user_status", table_name="booking_drafts")
-    op.drop_index(op.f("ix_booking_drafts_expires_at"), table_name="booking_drafts")
-    op.drop_table("booking_drafts")
-    op.drop_index("ix_appointments_cache_user_scheduled", table_name="appointments_cache")
-    op.drop_index("ix_appointments_cache_status", table_name="appointments_cache")
-    op.drop_table("appointments_cache")
-    op.drop_index("ix_system_events_severity_created", table_name="system_events")
-    op.drop_index(op.f("ix_system_events_event_code"), table_name="system_events")
-    op.drop_index("ix_system_events_correlation", table_name="system_events")
-    op.drop_index("ix_system_events_component", table_name="system_events")
-    op.drop_table("system_events")
-    op.drop_index(op.f("ix_patients_portal_account_id"), table_name="patients")
-    op.drop_table("patients")
-    op.drop_table("invite_redemptions")
-    op.drop_index(op.f("ix_connect_tickets_telegram_user_id"), table_name="connect_tickets")
-    op.drop_index(op.f("ix_connect_tickets_expires_at"), table_name="connect_tickets")
-    op.drop_table("connect_tickets")
-    op.drop_index(op.f("ix_user_settings_audit_telegram_user_id"), table_name="user_settings_audit")
-    op.drop_table("user_settings_audit")
-    op.drop_index(op.f("ix_portal_accounts_telegram_user_id"), table_name="portal_accounts")
-    op.drop_index("ix_portal_accounts_status", table_name="portal_accounts")
-    op.drop_index(op.f("ix_portal_accounts_email_blind_index"), table_name="portal_accounts")
-    op.drop_table("portal_accounts")
-    op.drop_index(op.f("ix_invite_codes_expires_at"), table_name="invite_codes")
-    op.drop_table("invite_codes")
-    op.drop_index(op.f("ix_conversation_states_expires_at"), table_name="conversation_states")
-    op.drop_table("conversation_states")
-    op.drop_index("ix_confirmation_nonces_user_action", table_name="confirmation_nonces")
-    op.drop_index(op.f("ix_confirmation_nonces_expires_at"), table_name="confirmation_nonces")
-    op.drop_table("confirmation_nonces")
-    op.drop_table("circuit_breakers")
-    op.drop_index(op.f("ix_callback_consumptions_expires_at"), table_name="callback_consumptions")
-    op.drop_table("callback_consumptions")
-    op.drop_index("ix_admin_audit_log_target", table_name="admin_audit_log")
-    op.drop_index("ix_admin_audit_log_correlation", table_name="admin_audit_log")
-    op.drop_index("ix_admin_audit_log_admin_created", table_name="admin_audit_log")
-    op.drop_table("admin_audit_log")
-    op.drop_index(op.f("ix_worker_heartbeats_last_seen_at"), table_name="worker_heartbeats")
-    op.drop_table("worker_heartbeats")
-    op.drop_index(op.f("ix_telegram_users_telegram_id"), table_name="telegram_users")
-    op.drop_index(op.f("ix_telegram_users_status"), table_name="telegram_users")
-    op.drop_table("telegram_users")
-    op.drop_index("ix_portal_call_logs_created", table_name="portal_call_logs")
-    op.drop_table("portal_call_logs")
-    op.drop_index(op.f("ix_connect_rate_limits_window_start"), table_name="connect_rate_limits")
-    op.drop_table("connect_rate_limits")
-    op.drop_table("backup_status")
+    """Drop the whole schema.
+
+    Individual ``DROP INDEX`` statements are not used because MySQL refuses to
+    remove an index that still backs a foreign key; the tables are dropped in
+    reverse dependency order with the checks disabled instead.
+    """
+    bind = op.get_bind()
+    bind.exec_driver_sql("SET FOREIGN_KEY_CHECKS = 0")
+    for table in (
+        "watch_run_logs",
+        "seen_slots",
+        "watch_locations",
+        "notification_events",
+        "cancellation_attempts",
+        "booking_attempts",
+        "download_tokens",
+        "appointments_cache",
+        "booking_drafts",
+        "booking_watches",
+        "callback_consumptions",
+        "confirmation_nonces",
+        "conversation_states",
+        "connect_tickets",
+        "patients",
+        "portal_accounts",
+        "user_settings_audit",
+        "invite_redemptions",
+        "invite_codes",
+        "admin_audit_log",
+        "circuit_breakers",
+        "system_events",
+        "worker_heartbeats",
+        "portal_call_logs",
+        "connect_rate_limits",
+        "backup_status",
+        "telegram_users",
+    ):
+        op.execute(sa.text(f"DROP TABLE IF EXISTS `{table}`"))
+    bind.exec_driver_sql("SET FOREIGN_KEY_CHECKS = 1")

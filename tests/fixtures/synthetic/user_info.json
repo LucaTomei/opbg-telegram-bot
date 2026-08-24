@@ -1,0 +1,8 @@
+{
+  "id": 4242,
+  "name": "Utente",
+  "surname": "Sintetico",
+  "access_token": "SYNTHETIC-ACCESS-TOKEN-MUST-NOT-BE-STORED",
+  "refresh_token": "SYNTHETIC-REFRESH-TOKEN-MUST-NOT-BE-STORED",
+  "expires_in": 3600
+}

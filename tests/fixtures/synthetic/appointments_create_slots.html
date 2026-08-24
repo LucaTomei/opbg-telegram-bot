@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="csrf-token" content="SYNTHETIC-META-CSRF-0004">
+</head>
+<body>
+  <a href="/logout">Esci</a>
+  <form method="POST" action="/appointments/create">
+    <input type="hidden" name="_token" value="SYNTHETIC-FORM-CSRF-0004">
+    <input type="hidden" name="id_proposal" value="PROP-0001">
+    <input type="hidden" name="location_details" value="101">
+    <input type="hidden" name="location_name" value="Sede Alfa">
+    <input type="hidden" name="selected_date" value="2026-09-15 09:30">
+    <input type="hidden" name="session_id_prestazione" value="9001">
+    <input type="hidden" name="session_name_prestazione" value="VISITA SINTETICA">
+    <button type="submit">Scegli</button>
+  </form>
+  <form method="POST" action="/appointments/create">
+    <input type="hidden" name="_token" value="SYNTHETIC-FORM-CSRF-0004">
+    <input type="hidden" name="id_proposal" value="PROP-0002">
+    <input type="hidden" name="location_details" value="202">
+    <input type="hidden" name="location_name" value="Sede Beta">
+    <input type="hidden" name="selected_date" value="2026-09-16 15:00">
+    <input type="hidden" name="session_id_prestazione" value="9001">
+    <input type="hidden" name="session_name_prestazione" value="VISITA SINTETICA">
+    <button type="submit">Scegli</button>
+  </form>
+</body>
+</html>

@@ -106,7 +106,6 @@ CONFIRM: Final[str] = "cf"
 
 # --- shared actions ----------------------------------------------------------
 ACTION_MENU: Final[str] = "menu"
-ACTION_BACK: Final[str] = "back"
 ACTION_CANCEL: Final[str] = "cancel"
 ACTION_NOOP: Final[str] = "noop"
 ACTION_PAGE: Final[str] = "page"
@@ -115,10 +114,6 @@ ACTION_REFRESH: Final[str] = "refresh"
 
 def menu() -> str:
     return build(NAV, ACTION_MENU)
-
-
-def back(target: str = "") -> str:
-    return build(NAV, ACTION_BACK, target)
 
 
 def cancel() -> str:

@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="csrf-token" content="SYNTHETIC-META-CSRF-0001">
+  <title>Accedi</title>
+</head>
+<body>
+  <form method="POST" action="/login" id="login-form">
+    <input type="hidden" name="_token" value="SYNTHETIC-FORM-CSRF-0001">
+    <input type="hidden" name="to_service" value="lapi">
+    <input type="hidden" name="confirm" value="0">
+    <label for="email">Email</label>
+    <input type="email" name="email" id="email" value="">
+    <label for="password">Password</label>
+    <input type="password" name="password" id="password" value="">
+    <button type="submit">Accedi</button>
+  </form>
+</body>
+</html>

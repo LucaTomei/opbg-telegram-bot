@@ -89,7 +89,10 @@ disallow_untyped_defs = true
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-asyncio_default_fixture_loop_scope = "function"
+# The disposable MySQL engine is session scoped, so fixtures and tests must
+# share one event loop for the whole run.
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
 testpaths = ["tests"]
 filterwarnings = ["error::DeprecationWarning:app.*"]
 markers = [

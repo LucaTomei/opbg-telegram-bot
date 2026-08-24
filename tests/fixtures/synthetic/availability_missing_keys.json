@@ -1,0 +1,10 @@
+{
+  "dates_locations": {
+    "2026-11-02": {
+      "08:15": [
+        { "codiceProposta": "PROP-9999", "descStrutturaErogante": "Sede Gamma" },
+        { "dataProposta": "2026-11-02 08:15:00" }
+      ]
+    }
+  }
+}

@@ -1,0 +1,32 @@
+# Development overrides.
+#
+# This file is applied automatically by `docker compose` and is not used in
+# production, where only `compose.yaml` is passed with `-f`.
+services:
+  mysql:
+    ports:
+      # Published only in development so tests can reach the disposable server.
+      - "127.0.0.1:13306:3306"
+
+  web:
+    environment:
+      APP_ENV: development
+      APP_LOG_LEVEL: DEBUG
+    ports:
+      - "127.0.0.1:8000:8000"
+    read_only: false
+
+  bot:
+    environment:
+      APP_ENV: development
+      APP_LOG_LEVEL: DEBUG
+    read_only: false
+
+  worker:
+    environment:
+      APP_ENV: development
+      APP_LOG_LEVEL: DEBUG
+    read_only: false
+
+  proxy:
+    profiles: ["proxy"]

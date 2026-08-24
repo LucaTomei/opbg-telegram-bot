@@ -1,0 +1,213 @@
+name: opbg-telegram-bot
+
+x-app-image: &app-image
+  build:
+    context: .
+    dockerfile: Dockerfile
+  image: opbg-telegram-bot:1.0.0
+
+x-app-environment: &app-environment
+  APP_ENV: ${APP_ENV:-production}
+  APP_LOG_LEVEL: ${APP_LOG_LEVEL:-INFO}
+  APP_TIMEZONE: ${APP_TIMEZONE:-Europe/Rome}
+  APP_SECRET_KEY: ${APP_SECRET_KEY:?APP_SECRET_KEY is required}
+  APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY:?APP_ENCRYPTION_KEY is required}
+  APP_ENCRYPTION_KEY_VERSION: ${APP_ENCRYPTION_KEY_VERSION:-1}
+  APP_PREVIOUS_ENCRYPTION_KEYS: ${APP_PREVIOUS_ENCRYPTION_KEYS:-}
+  APP_BLIND_INDEX_KEY: ${APP_BLIND_INDEX_KEY:?APP_BLIND_INDEX_KEY is required}
+  PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:?PUBLIC_BASE_URL is required}
+  TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:?TELEGRAM_BOT_TOKEN is required}
+  TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME:?TELEGRAM_BOT_USERNAME is required}
+  TELEGRAM_ADMIN_IDS: ${TELEGRAM_ADMIN_IDS:?TELEGRAM_ADMIN_IDS is required}
+  MYSQL_DATABASE: ${MYSQL_DATABASE:-opbg_bot}
+  MYSQL_USER: ${MYSQL_USER:-opbg_bot}
+  MYSQL_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD is required}
+  DATABASE_HOST: mysql
+  DATABASE_PORT: "3306"
+  PORTAL_BASE_URL: ${PORTAL_BASE_URL:-https://prenotazioni.ospedalebambinogesu.it}
+  PORTAL_TIMEOUT_SECONDS: ${PORTAL_TIMEOUT_SECONDS:-30}
+  PORTAL_MAX_CONCURRENCY: ${PORTAL_MAX_CONCURRENCY:-2}
+  PORTAL_USER_AGENT: ${PORTAL_USER_AGENT:-OPBG-Booking-Assistant/1.0}
+  MONITOR_DEFAULT_INTERVAL_SECONDS: ${MONITOR_DEFAULT_INTERVAL_SECONDS:-300}
+  MONITOR_MIN_INTERVAL_SECONDS: ${MONITOR_MIN_INTERVAL_SECONDS:-120}
+  MONITOR_JITTER_SECONDS: ${MONITOR_JITTER_SECONDS:-30}
+  MONITOR_ERROR_BACKOFF_MAX_SECONDS: ${MONITOR_ERROR_BACKOFF_MAX_SECONDS:-3600}
+  MAX_PORTAL_ACCOUNTS_PER_USER: ${MAX_PORTAL_ACCOUNTS_PER_USER:-10}
+  MAX_ACTIVE_MONITORS_PER_ACCOUNT: ${MAX_ACTIVE_MONITORS_PER_ACCOUNT:-20}
+  INVITE_TTL_HOURS: ${INVITE_TTL_HOURS:-72}
+  CONNECT_TICKET_TTL_MINUTES: ${CONNECT_TICKET_TTL_MINUTES:-10}
+  DESTRUCTIVE_CONFIRMATION_TTL_SECONDS: ${DESTRUCTIVE_CONFIRMATION_TTL_SECONDS:-120}
+  PDF_MAX_BYTES: ${PDF_MAX_BYTES:-10485760}
+  PDF_DELIVERY_MODE: ${PDF_DELIVERY_MODE:-telegram}
+  AUDIT_RETENTION_DAYS: ${AUDIT_RETENTION_DAYS:-365}
+  EVENT_RETENTION_DAYS: ${EVENT_RETENTION_DAYS:-90}
+
+x-app-defaults: &app-defaults
+  restart: unless-stopped
+  stop_grace_period: 30s
+  networks: [backend]
+  depends_on:
+    mysql:
+      condition: service_healthy
+  environment: *app-environment
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "5"
+  security_opt:
+    - no-new-privileges:true
+  read_only: true
+  tmpfs:
+    - /tmp:size=32m,mode=1777
+
+services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+      - --default-time-zone=+00:00
+      - --skip-name-resolve
+      - --max-connections=100
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD is required}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-opbg_bot}
+      MYSQL_USER: ${MYSQL_USER:-opbg_bot}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD is required}
+    volumes:
+      - mysql-data:/var/lib/mysql
+    networks: [backend]
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          mysqladmin ping -h 127.0.0.1
+          -u"$$MYSQL_USER" -p"$$MYSQL_PASSWORD" --silent
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+
+  migrate:
+    <<: [*app-image, *app-defaults]
+    command: ["migrate"]
+    restart: "no"
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+
+  web:
+    <<: [*app-image, *app-defaults]
+    command: ["web"]
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/health/ready"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+
+  bot:
+    <<: [*app-image, *app-defaults]
+    command: ["bot"]
+    healthcheck:
+      test: ["CMD", "python", "-m", "app.cli", "healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+
+  worker:
+    <<: [*app-image, *app-defaults]
+    command: ["worker"]
+    environment:
+      <<: *app-environment
+      WORKER_ID: ${WORKER_ID:-}
+    healthcheck:
+      test: ["CMD", "python", "-m", "app.cli", "healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+
+  proxy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    depends_on:
+      web:
+        condition: service_started
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN:?APP_DOMAIN is required}
+      ACME_EMAIL: ${ACME_EMAIL:?ACME_EMAIL is required}
+    volumes:
+      - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks: [backend]
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:2019/config/"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    security_opt:
+      - no-new-privileges:true
+
+  backup:
+    <<: *app-image
+    profiles: ["backup"]
+    restart: "no"
+    entrypoint: ["/bin/sh", "/opt/backup/backup.sh"]
+    environment:
+      <<: *app-environment
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
+      BACKUP_PASSPHRASE_FILE: /run/secrets/backup_passphrase
+    volumes:
+      - ./scripts/backup.sh:/opt/backup/backup.sh:ro
+      - backup-data:/backups
+    networks: [backend]
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+networks:
+  backend:
+    driver: bridge
+
+volumes:
+  mysql-data:
+  caddy-data:
+  caddy-config:
+  backup-data:

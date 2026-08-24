@@ -514,8 +514,9 @@ class PortalClient:
         location_ids: Sequence[str] = (),
     ) -> PortalAvailability:
         """Read availability from the JSON endpoint, falling back to the HTML step."""
-        payload: list[tuple[str, str]] = [("idPrestazione", str(service_id))]
-        payload.extend(("idUnitaErogante[]", str(value)) for value in location_ids)
+        payload: dict[str, str | list[str]] = {"idPrestazione": str(service_id)}
+        if location_ids:
+            payload["idUnitaErogante[]"] = [str(value) for value in location_ids]
         headers = {
             "X-CSRF-TOKEN": session.csrf_token,
             "X-Requested-With": "XMLHttpRequest",

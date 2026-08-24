@@ -1,0 +1,18 @@
+[
+  {
+    "descrizione": "DOTT. SINTETICO UNO",
+    "cognome": "SINTETICO",
+    "nome": "UNO",
+    "sesso": "MAS"
+  },
+  {
+    "descrizione": "DOTT.SSA SINTETICA DUE",
+    "cognome": "SINTETICA",
+    "nome": "DUE",
+    "sesso": "FEM"
+  },
+  {
+    "cognome": "SENZA",
+    "nome": "DESCRIZIONE"
+  }
+]

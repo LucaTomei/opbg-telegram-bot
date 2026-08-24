@@ -54,7 +54,8 @@ class AsyncRateLimiter:
     ) -> None:
         self._policy = policy
         self._semaphore = asyncio.Semaphore(policy.max_concurrency)
-        self._last_call_at = 0.0
+        # ``-inf`` so the very first request of a process is not delayed.
+        self._last_call_at = float("-inf")
         self._last_account_call_at: dict[str, float] = {}
         self._lock = asyncio.Lock()
         self._jitter = jitter or (lambda: 0.0)
@@ -66,7 +67,7 @@ class AsyncRateLimiter:
             now = self._clock()
             waits = [self._policy.min_interval_seconds - (now - self._last_call_at)]
             if account_key is not None:
-                last = self._last_account_call_at.get(account_key, 0.0)
+                last = self._last_account_call_at.get(account_key, float("-inf"))
                 waits.append(self._policy.per_account_min_interval_seconds - (now - last))
             delay = max([*waits, 0.0]) + self._jitter()
             if delay > 0:

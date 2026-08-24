@@ -33,8 +33,12 @@ _PLACEHOLDER_MARKERS: Final[tuple[str, ...]] = (
 )
 
 
-class ConfigurationError(RuntimeError):
-    """Raised when the process cannot start with the supplied configuration."""
+class ConfigurationError(ValueError):
+    """Raised when the process cannot start with the supplied configuration.
+
+    It derives from :class:`ValueError` so pydantic reports it as a normal
+    validation failure when raised inside a validator.
+    """
 
 
 def _looks_like_placeholder(value: str) -> bool:

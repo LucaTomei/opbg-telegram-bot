@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="csrf-token" content="SYNTHETIC-META-CSRF-0005">
+</head>
+<body>
+  <a href="/logout">Esci</a>
+  <h1>Conferma prenotazione</h1>
+  <form method="POST" action="/appointments/create" id="appointment-form">
+    <input type="hidden" name="_token" value="SYNTHETIC-FORM-CSRF-0005">
+    <input type="hidden" name="confirm" value="true">
+    <p>Pagamento allo sportello il giorno della visita.</p>
+    <button type="submit">Conferma</button>
+  </form>
+</body>
+</html>

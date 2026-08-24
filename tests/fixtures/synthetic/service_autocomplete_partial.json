@@ -1,0 +1,10 @@
+[
+  {
+    "description": "Prestazioni disponibili",
+    "list": [
+      { "descPrestazione": "SOLO DESCRIZIONE", "idPrestazione": 9101 },
+      { "descPrestazione": "", "idPrestazione": 9102 },
+      { "idPrestazione": 9103 }
+    ]
+  }
+]

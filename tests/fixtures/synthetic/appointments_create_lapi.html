@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="csrf-token" content="SYNTHETIC-META-CSRF-0002">
+</head>
+<body>
+  <a href="/logout">Esci</a>
+  <form method="POST" action="/appointments/create" id="appointment-form">
+    <input type="hidden" name="_token" value="SYNTHETIC-FORM-CSRF-0002">
+    <input type="hidden" name="servicetype" value="lapi">
+    <label for="tax_code">Paziente</label>
+    <select name="tax_code" id="tax_code">
+      <option value="" disabled selected>Seleziona</option>
+      <option value="AAABBB01A01A001A">Alfa Beta (figlio)</option>
+      <option value="CCCDDD02B02B002B">Gamma Delta (figlia)</option>
+    </select>
+    <input type="checkbox" name="privacy" value="1" checked>
+    <input type="checkbox" name="newsletter" value="1">
+    <button type="submit">Continua</button>
+  </form>
+</body>
+</html>

@@ -1,0 +1,48 @@
+# Reverse proxy in front of the web service.
+#
+# Only the routes the product needs are forwarded; everything else is refused.
+# Automatic HTTPS provides the certificate for {$APP_DOMAIN}.
+
+{
+	email {$ACME_EMAIL}
+	admin 0.0.0.0:2019
+	servers {
+		trusted_proxies static private_ranges
+	}
+}
+
+(security_headers) {
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+		Permissions-Policy "geolocation=(), microphone=(), camera=()"
+		-Server
+	}
+}
+
+http://{$APP_DOMAIN} {
+	redir https://{host}{uri} permanent
+}
+
+https://{$APP_DOMAIN} {
+	import security_headers
+
+	@allowed path /connect/* /download/* /health/live /health/ready /version /
+	handle @allowed {
+		header Cache-Control "no-store, no-cache, must-revalidate, private"
+		reverse_proxy web:8000 {
+			header_up X-Forwarded-Proto https
+		}
+	}
+
+	handle {
+		respond "Not found" 404
+	}
+
+	log {
+		output stdout
+		format json
+	}
+}

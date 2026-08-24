@@ -35,10 +35,10 @@ def navigation_row(
 ) -> list[InlineKeyboardButton]:
     """Standard `Indietro` / `Menu` / `Annulla` row present on every screen."""
     row: list[InlineKeyboardButton] = []
-    if back_target is not None:
-        row.append(
-            InlineKeyboardButton(text=texts.BTN_BACK, callback_data=callbacks.back(back_target))
-        )
+    if back_target:
+        # The back button carries the target payload directly: every target is
+        # already a handled callback, so no extra indirection is needed.
+        row.append(InlineKeyboardButton(text=texts.BTN_BACK, callback_data=back_target))
     if show_menu:
         row.append(InlineKeyboardButton(text=texts.BTN_MENU, callback_data=callbacks.menu()))
     if show_cancel:

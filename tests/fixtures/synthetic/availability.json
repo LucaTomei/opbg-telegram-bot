@@ -1,0 +1,56 @@
+{
+  "locations": {
+    "101": "Sede Alfa",
+    "202": "Sede Beta"
+  },
+  "locations_dates": [
+    { "2026-09-15": [{}] },
+    { "2026-09-16": [{}] }
+  ],
+  "dates_locations": {
+    "2026-09-15": {
+      "09:30": [
+        {
+          "codiceProposta": "PROP-0001",
+          "dataProposta": "2026-09-15 09:30:00",
+          "descAmbulatorio": "Ambulatorio 1",
+          "descStrutturaErogante": "Sede Alfa",
+          "idAmbulatorio": 11,
+          "idStrutturaErogante": 101,
+          "costoPrestazione": "35,00",
+          "descAgenda": "Agenda Alfa",
+          "idAgenda": 501,
+          "idPrestazione": "9001",
+          "idMedico": "M-1",
+          "descMedico": "DOTT. SINTETICO UNO"
+        }
+      ],
+      "14:00": [
+        {
+          "codiceProposta": "PROP-0003",
+          "dataProposta": "2026-09-15 14:00:00",
+          "descStrutturaErogante": "Sede Beta",
+          "idStrutturaErogante": 202,
+          "idPrestazione": "9001",
+          "idMedico": "M-2",
+          "descMedico": "DOTT.SSA SINTETICA DUE"
+        }
+      ]
+    },
+    "2026-09-16": {
+      "15:00": [
+        {
+          "codiceProposta": "PROP-0002",
+          "dataProposta": "2026-09-16 15:00:00",
+          "descStrutturaErogante": "Sede Beta",
+          "idStrutturaErogante": 202,
+          "idPrestazione": "9001"
+        }
+      ]
+    }
+  },
+  "doctors": {
+    "M-1": "DOTT. SINTETICO UNO",
+    "M-2": "DOTT.SSA SINTETICA DUE"
+  }
+}

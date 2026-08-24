@@ -1,0 +1,41 @@
+[
+  {
+    "description": "Prestazioni disponibili",
+    "message": "",
+    "list": [
+      {
+        "costoPrestazione": "35,00",
+        "descPrestazione": "VISITA SINTETICA",
+        "disponibilitaVisibileOnLine": true,
+        "gruppoErogabile": 12,
+        "idModalitaPreparazione": 0,
+        "idPrestazione": 9001,
+        "idSpecificazione": null,
+        "prenOnLine": true,
+        "prenSportello": false,
+        "prenTelefonica": false,
+        "testoModalitaPreparazione": ""
+      },
+      {
+        "costoPrestazione": null,
+        "descPrestazione": "CONTROLLO SINTETICO",
+        "disponibilitaVisibileOnLine": true,
+        "gruppoErogabile": 12,
+        "idModalitaPreparazione": 3,
+        "idPrestazione": 9002,
+        "idSpecificazione": 44,
+        "prenOnLine": true,
+        "prenSportello": true,
+        "prenTelefonica": false,
+        "testoModalitaPreparazione": "Presentarsi a digiuno da 8 ore."
+      },
+      {
+        "descPrestazione": "PRESTAZIONE NON ONLINE",
+        "disponibilitaVisibileOnLine": false,
+        "idPrestazione": 9003,
+        "prenOnLine": false,
+        "prenSportello": true
+      }
+    ]
+  }
+]

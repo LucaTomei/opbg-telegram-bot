@@ -595,9 +595,14 @@ def _status_from_classes(node: Node) -> str | None:
 def parse_appointments(html: str) -> tuple[PortalAppointment, ...]:
     """Parse the appointment list using normalised labels, not field order."""
     document = HTMLParser(html)
-    container = document.css_first("#appointments-list") or document.body
+    container = document.css_first("#appointments-list")
     if container is None:
-        raise PortalContractChanged("appointment list container not found")
+        # Without the documented container the page may still be a valid list
+        # rendered differently; only accept it when appointment cards exist.
+        fallback = document.body
+        if fallback is None or not fallback.css(".appointment, [data-appointment-id]"):
+            raise PortalContractChanged("appointment list container not found")
+        container = fallback
 
     nodes = container.css(".appointment")
     if not nodes:
