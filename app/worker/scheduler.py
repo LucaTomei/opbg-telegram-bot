@@ -85,9 +85,7 @@ class WorkerScheduler:
             ),
             LoopSpec("reconcile", RECONCILE_INTERVAL_SECONDS, self._run_reconcile),
             LoopSpec("cleanup", CLEANUP_INTERVAL_SECONDS, self._run_cleanup),
-            LoopSpec(
-                "notifications", NOTIFICATION_INTERVAL_SECONDS, self._run_notifications
-            ),
+            LoopSpec("notifications", NOTIFICATION_INTERVAL_SECONDS, self._run_notifications),
             LoopSpec(
                 "heartbeat",
                 self.settings.worker_heartbeat_seconds,
@@ -135,9 +133,7 @@ class WorkerScheduler:
                     extra={"event_code": "WORKER_LOOP_ERROR", "loop": spec.name},
                 )
             try:
-                await asyncio.wait_for(
-                    self._stopping.wait(), timeout=spec.interval_seconds
-                )
+                await asyncio.wait_for(self._stopping.wait(), timeout=spec.interval_seconds)
             except TimeoutError:
                 continue
 
@@ -179,9 +175,7 @@ class WorkerScheduler:
         if self.sender is None or self.renderer is None:
             return
         async with self.database.session() as session:
-            await self.notifications.dispatch_pending(
-                session, self.sender, self.renderer, limit=20
-            )
+            await self.notifications.dispatch_pending(session, self.sender, self.renderer, limit=20)
 
     async def _run_heartbeat(self, publisher: HeartbeatPublisher) -> None:
         async with self.database.session() as session:

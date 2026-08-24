@@ -60,6 +60,11 @@ ignore = ["RUF001", "RUF002", "RUF003", "B008", "N818", "A005"]
 "app/db/types.py" = ["ARG002"]
 # Protocol implementations must keep the full signature.
 "app/portal/rate_limit.py" = ["ARG002"]
+# aiogram injects handler arguments by name, so a handler may legitimately
+# declare a dependency it does not use in every branch.
+"app/bot/routers/*.py" = ["ARG001"]
+# The renderer signature is fixed by the notification queue contract.
+"app/bot/notifications.py" = ["ARG001"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["app"]
