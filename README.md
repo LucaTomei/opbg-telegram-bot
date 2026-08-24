@@ -175,6 +175,9 @@ opt-in, in sola lettura, e disabilitati per impostazione predefinita.
 
 ## Operazioni
 
+Il deploy su un container LXC di Proxmox è descritto passo per passo in
+[`docs/12-deploy-proxmox.md`](docs/12-deploy-proxmox.md).
+
 Il runbook completo è in [`docs/11-runbook.md`](docs/11-runbook.md): aggiunta e
 rimozione di amministratori, generazione inviti, ri-autenticazione, pausa
 globale dei monitoraggi, circuit breaker, diagnosi di un cambio del portale,
@@ -235,7 +238,9 @@ da [`.gitignore`](.gitignore) e verificati da `scripts/secret_scan.sh`.
 10. [`docs/09-testing-acceptance.md`](docs/09-testing-acceptance.md)
 11. [`docs/10-definition-of-done.md`](docs/10-definition-of-done.md)
 12. [`docs/11-runbook.md`](docs/11-runbook.md)
-13. [`docs/IMPLEMENTATION_STATUS.md`](docs/IMPLEMENTATION_STATUS.md) — stato,
+13. [`docs/12-deploy-proxmox.md`](docs/12-deploy-proxmox.md) — deploy su un
+    container LXC di Proxmox
+14. [`docs/IMPLEMENTATION_STATUS.md`](docs/IMPLEMENTATION_STATUS.md) — stato,
     verifiche eseguite e matrice di tracciabilità
 
 ## Licenza
