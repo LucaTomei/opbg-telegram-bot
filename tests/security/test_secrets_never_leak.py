@@ -182,3 +182,61 @@ async def test_admin_actions_always_carry_a_reason(
     assert entries.total == 1
     assert entries.items[0].reason == "motivo tracciato"
     assert entries.items[0].created_at <= utc_now()
+
+
+def test_no_sensitive_column_is_stored_in_plaintext() -> None:
+    """Every column that can hold personal data must be a ciphertext or a hash."""
+    from app.db.models import Base
+
+    markers = (
+        "email",
+        "password",
+        "cookie",
+        "tax_code",
+        "first_name",
+        "last_name",
+        "username",
+        "display_name",
+        "relationship",
+        "patient_label",
+        "payload",
+        "service_name",
+        "doctor_name",
+    )
+    # Public or non-personal values, plus the free-text audit reason, which the
+    # documentation requires to stay readable.
+    allowed = {
+        ("watch_locations", "location_name"),
+        ("seen_slots", "location_name"),
+        ("booking_attempts", "location_name"),
+        ("booking_watches", "selected_service_name"),
+        ("booking_watches", "selected_doctor_name"),
+        ("booking_drafts", "selected_service_name"),
+        ("booking_drafts", "selected_doctor_name"),
+    }
+    offenders = [
+        f"{table.name}.{column.name}"
+        for table in Base.metadata.tables.values()
+        for column in table.columns
+        if any(marker in column.name for marker in markers)
+        and not column.name.endswith(("_ciphertext", "_blind_index", "_hash"))
+        and (table.name, column.name) not in allowed
+    ]
+    assert offenders == []
+
+
+def test_the_web_surface_exposes_only_the_expected_routes() -> None:
+    """No administrative API may be reachable over HTTP."""
+    import re
+
+    sources = "\n".join(
+        path.read_text(encoding="utf-8") for path in (ROOT / "app" / "web" / "routes").rglob("*.py")
+    )
+    routes = set(re.findall(r'@router\.(?:get|post)\("([^"]+)"', sources))
+    assert routes == {
+        "/connect/{token}",
+        "/download/{token}",
+        "/health/live",
+        "/health/ready",
+        "/version",
+    }

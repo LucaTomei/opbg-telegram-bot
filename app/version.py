@@ -6,4 +6,4 @@ from typing import Final
 
 APP_NAME: Final[str] = "opbg-telegram-bot"
 APP_VERSION: Final[str] = "1.0.0"
-SCHEMA_VERSION: Final[str] = "0002_restrict_booking_history"
+SCHEMA_VERSION: Final[str] = "0003_clean_internal_columns"

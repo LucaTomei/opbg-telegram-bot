@@ -98,7 +98,7 @@ class CircuitBreakerService:
         if record.state is BreakerState.OPEN:
             if record.reopen_at is not None and record.reopen_at <= now:
                 record.state = BreakerState.HALF_OPEN
-                record.half_open_token = os.urandom(16)
+                record.half_open_probe = os.urandom(16)
                 await session.flush()
                 return
             remaining = 0.0
@@ -110,8 +110,8 @@ class CircuitBreakerService:
                 scope=scope.value,
             )
         # HALF_OPEN: exactly one probe is allowed at a time.
-        if record.half_open_token is None:
-            record.half_open_token = os.urandom(16)
+        if record.half_open_probe is None:
+            record.half_open_probe = os.urandom(16)
             await session.flush()
             return
 
@@ -123,7 +123,7 @@ class CircuitBreakerService:
         record.failure_count = 0
         record.opened_at = None
         record.reopen_at = None
-        record.half_open_token = None
+        record.half_open_probe = None
         record.last_failure_code = None
         await session.flush()
 
@@ -146,7 +146,7 @@ class CircuitBreakerService:
             record.state = BreakerState.OPEN
             record.opened_at = now
             record.reopen_at = now + timedelta(seconds=self._cooldown(scope))
-            record.half_open_token = None
+            record.half_open_probe = None
             opened = True
             logger.warning(
                 "portal circuit breaker opened",
@@ -179,7 +179,7 @@ class CircuitBreakerService:
             record.failure_count = 0
             record.opened_at = None
             record.reopen_at = None
-            record.half_open_token = None
+            record.half_open_probe = None
         elif state is BreakerState.OPEN:
             now = _now()
             record.opened_at = now

@@ -21,8 +21,8 @@ BTN_BACK: Final[str] = "◀️ Indietro"
 BTN_MENU: Final[str] = "🏠 Menu"
 BTN_CANCEL: Final[str] = "❌ Annulla"
 BTN_REFRESH: Final[str] = "🔄 Aggiorna"
-BTN_PREV_PAGE: Final[str] = "◀️"
-BTN_NEXT_PAGE: Final[str] = "▶️"
+BTN_PREV_PAGE: Final[str] = "◀️ Precedente"
+BTN_NEXT_PAGE: Final[str] = "Successiva ▶️"
 
 # --- generic -----------------------------------------------------------------
 MAIN_MENU: Final[str] = (

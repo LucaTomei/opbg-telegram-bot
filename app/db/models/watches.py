@@ -7,7 +7,6 @@ from datetime import date, datetime
 from typing import Any
 
 from sqlalchemy import (
-    BINARY,
     Boolean,
     Date,
     DateTime,
@@ -191,4 +190,3 @@ class WatchRunLog(UuidPkMixin, Base):
     correlation_id: Mapped[str | None] = mapped_column(String(32), default=None)
     worker_id: Mapped[str | None] = mapped_column(String(64), default=None)
     duration_ms: Mapped[int | None] = mapped_column(Integer, default=None)
-    lease_token: Mapped[bytes | None] = mapped_column(BINARY(16), default=None)

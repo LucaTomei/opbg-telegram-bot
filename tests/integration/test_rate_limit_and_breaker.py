@@ -165,7 +165,7 @@ async def test_the_breaker_goes_half_open_after_the_cooldown(
     states = await breaker.list_states(clean_session)
     record = next(item for item in states if item.subject_key == ACCOUNT)
     assert record.state is BreakerState.HALF_OPEN
-    assert record.half_open_token is not None
+    assert record.half_open_probe is not None
 
 
 async def test_a_failure_in_half_open_reopens_immediately(
@@ -235,11 +235,11 @@ async def test_half_open_allows_a_single_probe_token(
         admin_user_id=None,
         reason="prova",
     )
-    record.half_open_token = None
+    record.half_open_probe = None
     await clean_session.flush()
     await breaker.ensure_closed(clean_session, scope=BreakerScope.GLOBAL)
     states = await breaker.list_states(clean_session)
     assert (
-        next(item for item in states if item.scope is BreakerScope.GLOBAL).half_open_token
+        next(item for item in states if item.scope is BreakerScope.GLOBAL).half_open_probe
         is not None
     )

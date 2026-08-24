@@ -14,7 +14,7 @@ e disdetta sul portale reale, descritta in
 ## Ambiente
 
 - Versione applicativa: `1.0.0`
-- Revisione schema: `0002_restrict_booking_history`
+- Revisione schema: `0003_clean_internal_columns`
 - Python: 3.13
 - MySQL: 8.4 (immagine `mysql:8.4`)
 - Docker: 29.5.2 · Compose: v5.1.4
@@ -27,7 +27,7 @@ e disdetta sul portale reale, descritta in
 | Configurazione | `app/config.py`, `app/logging.py`, `app/version.py`, `app/composition.py`, `app/cli.py` |
 | Dominio | `app/domain/{enums,entities,errors,filters,fingerprint}.py` |
 | Sicurezza | `app/security/{encryption,blind_index,tokens,redaction,context}.py` |
-| Persistenza | `app/db/{base,session,types,migrations}.py`, `app/db/models/*`, `app/db/repositories/*`, `alembic/versions/0001_initial.py`, `alembic/versions/0002_restrict_booking_history.py` |
+| Persistenza | `app/db/{base,session,types,migrations}.py`, `app/db/models/*`, `app/db/repositories/*`, `alembic/versions/0001_initial.py`, `alembic/versions/0002_restrict_booking_history.py`, `alembic/versions/0003_clean_internal_columns.py` |
 | Adapter portale | `app/portal/{client,parsers,forms,models,rate_limit,circuit_breaker}.py` |
 | Servizi | `app/services/{users,accounts,portal_sessions,search,bookings,appointments,watches,notifications,confirmations,admin,locks,mapping,slot_codec}.py` |
 | Bot Telegram | `app/bot/{texts,callbacks,storage,notifications}.py`, `app/bot/{routers,keyboards,middleware,presenters}/*` |
@@ -57,17 +57,17 @@ Tutti i comandi sono stati eseguiti il 2026-08-24 sulla revisione corrente.
 
 | Verifica | Comando | Esito |
 | --- | --- | --- |
-| Formatter | `ruff format --check app tests alembic scripts` | ✅ 147 file già formattati |
+| Formatter | `ruff format --check app tests alembic scripts` | ✅ tutti i file già formattati |
 | Linter | `ruff check .` | ✅ nessun rilievo |
-| Type checker | `mypy app tests` | ✅ 143 file, nessun errore (modalità `strict`) |
-| Test unit/contract/security | `pytest tests/unit tests/contract tests/security` | ✅ 309 passati, 5 deselezionati (live) |
-| Test integrazione (MySQL) | `pytest tests/integration` | ✅ 242 passati |
-| Suite completa | `pytest` | ✅ 551 passati, 5 deselezionati |
+| Type checker | `mypy app tests` | ✅ 144 file, nessun errore (modalità `strict`) |
+| Test unit/contract/security | `pytest tests/unit tests/contract tests/security` | ✅ 316 passati, 5 deselezionati (live) |
+| Test integrazione (MySQL) | `pytest tests/integration` | ✅ 245 passati |
+| Suite completa | `pytest` | ✅ 561 passati, 5 deselezionati |
 | Copertura | `pytest --cov=app` | ✅ 78% complessivo (soglia documentata: 70%) |
 | Compose config | `docker compose config` | ✅ configurazione valida |
 | Build immagine | `docker compose build` | ✅ `opbg-telegram-bot:1.0.0` |
-| Migrazione da DB vuoto | `docker compose down -v && docker compose run --rm migrate` | ✅ `0001_initial` → `0002_restrict_booking_history` |
-| Health container | `docker compose ps` | ✅ `mysql`, `web`, `worker` healthy; `/health/ready` → `{"status":"ready","schema_revision":"0002_restrict_booking_history"}` |
+| Migrazione da DB vuoto | `docker compose down -v && docker compose run --rm migrate` | ✅ `0001_initial` → `0002_restrict_booking_history` → `0003_clean_internal_columns` |
+| Health container | `docker compose ps` | ✅ `mysql`, `web`, `worker` healthy; `/health/ready` → `{"status":"ready","schema_revision":"0003_clean_internal_columns"}` |
 | Config TLS | `caddy validate --config docker/Caddyfile` | ✅ `Valid configuration` |
 | Backup | `docker compose --profile backup run --rm backup` | ✅ archivio cifrato scritto, esito `SUCCESS` in `backup_status` |
 | Restore | `restore.sh <archivio> opbg_bot_restore_check` | ✅ 28 tabelle ripristinate su database separato |

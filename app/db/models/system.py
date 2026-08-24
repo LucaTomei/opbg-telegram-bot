@@ -118,7 +118,9 @@ class CircuitBreakerStateRecord(UuidPkMixin, TimestampMixin, Base):
     opened_at: Mapped[datetime | None] = mapped_column(DateTime, default=None)
     reopen_at: Mapped[datetime | None] = mapped_column(DateTime, default=None)
     last_failure_code: Mapped[str | None] = mapped_column(String(64), default=None)
-    half_open_token: Mapped[bytes | None] = mapped_column(BINARY(16), default=None)
+    #: Marks the single probe allowed while the breaker is half open. It is an
+    #: internal marker, not a credential.
+    half_open_probe: Mapped[bytes | None] = mapped_column(BINARY(16), default=None)
     overridden_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UuidBinary, ForeignKey("telegram_users.id", ondelete="SET NULL"), default=None
     )
