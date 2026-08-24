@@ -69,7 +69,7 @@ Tutti i comandi sono stati eseguiti il 2026-08-24 sulla revisione corrente.
 | Migrazione da DB vuoto | `docker compose down -v && docker compose run --rm migrate` | ✅ `0001_initial` → `0002_restrict_booking_history` → `0003_clean_internal_columns` |
 | Health container | `docker compose ps` | ✅ `mysql`, `web`, `worker` healthy; `/health/ready` → `{"status":"ready","schema_revision":"0003_clean_internal_columns"}` |
 | Config TLS | `caddy validate --config docker/Caddyfile` | ✅ `Valid configuration` |
-| Backup | `docker compose --profile backup run --rm backup` | ✅ archivio cifrato scritto, esito `SUCCESS` in `backup_status` |
+| Backup | `docker compose --profile backup run --rm backup` | ✅ `opbg-<timestamp>-0003_clean_internal_columns.sql.gz.enc`, esito `SUCCESS` in `backup_status` |
 | Restore | `restore.sh <archivio> opbg_bot_restore_check` | ✅ 28 tabelle ripristinate su database separato |
 | Spegnimento pulito | `docker compose stop worker` | ✅ `WORKER_STOPPED` con rilascio dei lease |
 | Secret scan | `bash scripts/secret_scan.sh` | ✅ pulito |
