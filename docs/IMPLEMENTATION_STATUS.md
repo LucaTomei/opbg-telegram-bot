@@ -60,6 +60,7 @@ Tutti i comandi sono stati eseguiti il 2026-08-24 sulla revisione corrente.
 | Spegnimento pulito | `docker compose stop worker` | ✅ `WORKER_STOPPED` con rilascio dei lease |
 | Secret scan | `bash scripts/secret_scan.sh` | ✅ pulito; ogni rilevatore verificato iniettando un finto segreto su Ubuntu |
 | Scan placeholder | `bash scripts/placeholder_scan.sh` | ✅ pulito; rilevatori verificati su Ubuntu |
+| Contratto live (sola lettura) | `pytest tests/contract/test_live_portal.py -m live` | ✅ 8 test contro il portale reale: login, verifica sessione, pazienti, autocomplete prestazioni e medici, scelta con le sue sedi, disponibilità, elenco appuntamenti, PDF |
 | Guardrail su Linux | `make audit-ci` | ✅ scanner eseguiti in un container identico al runner |
 | Audit bottoni | `python scripts/handler_audit.py` | ✅ 103 payload di callback, tutti gestiti |
 | Configurazione senza voci morte | `pytest tests/security/test_ui_completeness.py` | ✅ ogni variabile dichiarata è usata e ogni variabile documentata esiste |
@@ -144,7 +145,18 @@ soddisfatta, con le sole eccezioni dichiarate nella sezione seguente.
 
 ## Verifiche esterne
 
-Una sola verifica resta aperta, perché richiede un appuntamento vero.
+### Eseguite
+
+Il percorso di lettura è stato verificato contro il portale reale, con un
+account autorizzato e la suite `-m live`. Ha rivelato sei difetti che il
+portale sintetico non poteva mostrare, tutti corretti e coperti da test:
+il barattolo dei cookie appiattito, le sedi lette da un markup che il portale
+non usa, la mappa vuota serializzata da PHP come array, la data
+dell'appuntamento scritta solo nell'intestazione della scheda, il valore del
+medico atteso come `cognome_nome`, e i passi del wizard marcati non
+ritentabili su un portale che risponde `500` con regolarità.
+
+### Aperta
 
 1. **Prenotazione e disdetta reali sul portale.** Tutta la logica è
    implementata e testata contro un portale sintetico che riproduce le stesse
