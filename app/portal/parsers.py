@@ -643,8 +643,29 @@ def _header_date(node: Node) -> date | None:
     return parse_date(header.text(deep=False, strip=True)) or parse_date(header.text(strip=True))
 
 
-def _parse_appointment_node(node: Node) -> PortalAppointment | None:
+def _appointment_values(node: Node) -> dict[str, str]:
+    """Read the labelled fields of a card, block by block.
+
+    The block itself disambiguates the label: the portal writes ``Stato`` over
+    the payment, so reading label and text as two parallel lists files "not
+    paid" as the appointment status.
+    """
     values: dict[str, str] = {}
+    for block in node.css(".appointment-info"):
+        classes = (block.attributes.get("class") or "").lower()
+        labels = block.css(".appointment-info__label")
+        texts = block.css(".appointment-info__text")
+        for label_node, text_node in zip(labels, texts, strict=False):
+            key = (
+                "payment" if "payment" in classes else _classify_label(label_node.text(strip=True))
+            )
+            if key is None:
+                continue
+            values.setdefault(key, normalize_text(text_node.text(strip=True)))
+    if values:
+        return values
+
+    # A card rendered without the block wrapper: fall back to parallel lists.
     labels = node.css(".appointment-info__label")
     texts = node.css(".appointment-info__text")
     for label_node, text_node in zip(labels, texts, strict=False):
@@ -652,6 +673,11 @@ def _parse_appointment_node(node: Node) -> PortalAppointment | None:
         if key is None:
             continue
         values.setdefault(key, normalize_text(text_node.text(strip=True)))
+    return values
+
+
+def _parse_appointment_node(node: Node) -> PortalAppointment | None:
+    values = _appointment_values(node)
 
     for info in node.css("[data-label]"):
         key = _classify_label(info.attributes.get("data-label") or "")
@@ -684,7 +710,9 @@ def _parse_appointment_node(node: Node) -> PortalAppointment | None:
     pdf_node = node.css_first("a[href*='pdf-download']")
     pdf_path = pdf_node.attributes.get("href") if pdf_node is not None else None
 
-    status_hint = values.get("status") or _status_from_classes(node)
+    # The card's own class is the portal's verdict; a labelled field is only a
+    # hint and may well be about the payment.
+    status_hint = _status_from_classes(node) or values.get("status")
     service = values.get("service")
     location = values.get("location")
 

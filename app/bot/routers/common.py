@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import (
     CallbackQuery,
     InlineKeyboardMarkup,
@@ -14,14 +15,30 @@ from aiogram.types import (
 from app.bot import texts
 from app.bot.keyboards.reply import main_keyboard
 from app.db.models.users import TelegramUser
+from app.logging import get_logger
+
+logger = get_logger(__name__)
 
 PARSE_MODE = "HTML"
 
 
 async def acknowledge(event: TelegramObject, text: str | None = None) -> None:
-    """Answer a callback immediately so the client stops showing a spinner."""
-    if isinstance(event, CallbackQuery):
+    """Answer a callback immediately so the client stops showing a spinner.
+
+    A query expires, and one belonging to an older message may already have
+    been answered. Neither is the user's problem, and neither should abort the
+    handler or reach them as a technical error: the acknowledgement only
+    removes a spinner.
+    """
+    if not isinstance(event, CallbackQuery):
+        return
+    try:
         await event.answer(text[:200] if text else None)
+    except TelegramBadRequest:
+        logger.debug(
+            "the callback could not be acknowledged",
+            extra={"event_code": "CALLBACK_NOT_ACKNOWLEDGED"},
+        )
 
 
 async def notify_working(event: TelegramObject, text: str = texts.PORTAL_WORKING) -> None:

@@ -241,6 +241,19 @@ def test_the_appointment_day_is_read_from_the_card_header() -> None:
     assert appointment.cancel_path == "/appointments/90001/cancel"
 
 
+def test_the_payment_label_is_not_mistaken_for_the_appointment_status() -> None:
+    """The portal writes "Stato" over the payment, and the card carries the real one.
+
+    Reading the labelled field leaves every appointment "non determinato" while
+    the card plainly says it is pending.
+    """
+    appointments = parsers.parse_appointments(load("appointments_list_header_date.html"))
+    appointment = appointments[0]
+    assert appointment.status_hint == "pending"
+    assert appointment.payment_note is not None
+    assert "pagato" in appointment.payment_note.casefold()
+
+
 def test_an_empty_availability_serialised_as_an_array_is_not_a_contract_change() -> None:
     """PHP serialises an empty associative array as ``[]``.
 
