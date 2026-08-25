@@ -328,6 +328,23 @@ async def test_cancellation_is_never_retried(settings: Settings) -> None:
     assert attempts["count"] == 1
 
 
+async def test_a_session_the_portal_refuses_is_not_trusted(settings: Settings) -> None:
+    """A stored jar the portal rejects must send us back to the login.
+
+    Letting the error escape skips the fresh login, and a jar written by an
+    older release then fails for ever with no way back.
+    """
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/appointments":
+            return httpx.Response(500, text="server error")
+        return default_handler(request)
+
+    client = build_client(settings, handler)
+    async with client.session(account_key="a", cookies={"opbg-prenotazione": "stale"}) as session:
+        assert await client.verify_session(session) is False
+
+
 async def test_retrying_stops_once_the_time_budget_is_spent(settings: Settings) -> None:
     """A flaky portal must not keep someone waiting for minutes.
 

@@ -71,6 +71,9 @@ class FakePortal:
     transient_failures: int = 0
     #: Set to ``True`` to require re-authentication on the next request.
     session_expired: bool = False
+    #: When ``True`` the authenticated routes answer with a server error while a
+    #: stored session is presented, as the portal does with a jar it refuses.
+    stored_session_is_refused: bool = False
     pdf_content_type: str = "application/pdf"
     pdf_bytes: bytes = PDF_BYTES
 
@@ -98,6 +101,7 @@ class FakePortal:
             "forced_status",
             "transient_failures",
             "session_expired",
+            "stored_session_is_refused",
             "pdf_content_type",
             "pdf_bytes",
             "session_cookie",
@@ -128,6 +132,7 @@ class FakePortal:
 
             if quote_plus(email) in body and quote_plus(password) in body:
                 self.session_expired = False
+                self.stored_session_is_refused = False
                 return httpx.Response(
                     302,
                     headers={
@@ -139,6 +144,10 @@ class FakePortal:
 
         # Authenticated routes require the session cookie, exactly like the
         # portal: a failed login therefore cannot be mistaken for a success.
+        if self.stored_session_is_refused and self._has_session(request):
+            # Stays refused until a fresh login replaces the jar, exactly like a
+            # session the portal no longer accepts.
+            return httpx.Response(500, text="server error")
         if self.session_expired or not self._has_session(request):
             return _html(load("login_form.html"))
 

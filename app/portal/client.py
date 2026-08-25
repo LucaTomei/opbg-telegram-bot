@@ -36,6 +36,7 @@ from app.domain.errors import (
     PdfUnavailable,
     PortalCaptchaRequired,
     PortalContractChanged,
+    PortalError,
     PortalRateLimited,
     PortalUnavailable,
     ReauthenticationRequired,
@@ -399,12 +400,27 @@ class PortalClient:
         )
 
     async def verify_session(self, session: PortalSession) -> bool:
-        """Confirm the session is authenticated using an explicit request."""
+        """Confirm the session is authenticated using an explicit request.
+
+        Any portal error means the stored session cannot be trusted, not that
+        the operation is over: letting one escape would skip the fresh login
+        that is the only way back, and a jar the portal refuses would keep
+        failing for ever.
+        """
         try:
             response = await self._request(
                 session, "GET", APPOINTMENTS_PATH, operation="verify_session"
             )
         except ReauthenticationRequired:
+            return False
+        except PortalError as exc:
+            logger.info(
+                "the stored session could not be verified; logging in again",
+                extra={
+                    "event_code": "SESSION_VERIFY_FAILED",
+                    "error_type": type(exc).__name__,
+                },
+            )
             return False
         if not parsers.looks_authenticated(response.text):
             return False

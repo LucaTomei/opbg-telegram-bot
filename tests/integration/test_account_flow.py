@@ -211,6 +211,28 @@ async def test_repeated_failures_lock_the_flow_and_warn_the_user(
 
 
 # --- re-authentication --------------------------------------------------------
+async def test_a_stored_session_the_portal_refuses_triggers_a_fresh_login(
+    clean_session: AsyncSession,
+    container: Container,
+    user: TelegramUser,
+    portal: FakePortal,
+) -> None:
+    """A jar the portal rejects must not block the account for ever.
+
+    The stored session is verified before use; when that verification fails
+    with a server error the account has to log in again, otherwise every later
+    request keeps failing with no way back.
+    """
+    account = await connect_account(clean_session, container, user)
+    portal.stored_session_is_refused = True
+
+    async with container.sessions.authenticated_session(clean_session, account) as portal_session:
+        assert await container.portal_client.verify_session(portal_session) is True
+
+    logins = [entry for entry in portal.requests if entry == "POST /login"]
+    assert len(logins) >= 2, f"the account never logged in again: {portal.requests}"
+
+
 async def test_reauthentication_rotates_the_credentials_and_resumes_watches(
     clean_session: AsyncSession,
     container: Container,
