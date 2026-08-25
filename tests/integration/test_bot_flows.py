@@ -401,7 +401,7 @@ async def test_a_doctor_with_several_services_asks_which_one(
     Skipping the question sends availability without a service and earns a 400,
     which reached the user as a technical error.
     """
-    account, patient = linked
+    account, _patient = linked
     bot_portal.doctor_step_fixture = "appointments_create_doctor_units.html"
     await bot.send(USER_ID, texts.BTN_BOOK)
     await bot.press(USER_ID, bot.find("Scegli l'account").callback_for(account.label))
