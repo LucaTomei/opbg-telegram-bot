@@ -145,12 +145,19 @@ async def session(engine: AsyncEngine) -> AsyncIterator[AsyncSession]:
 
 @pytest.fixture
 async def clean_session(engine: AsyncEngine) -> AsyncIterator[AsyncSession]:
-    """A session that truncates every table before the test runs."""
+    """A session that empties every table before the test runs.
+
+    ``DELETE`` rather than ``TRUNCATE``: the latter is a DDL statement that
+    recreates the tablespace and forces a flush for each of the twenty-five
+    tables, on every test. The tables hold a handful of rows here, so deleting
+    them is far cheaper, and the primary keys are UUIDs, so nothing depends on
+    an auto-increment being reset.
+    """
     factory = create_session_factory(engine)
     async with engine.begin() as connection:
         await connection.exec_driver_sql("SET FOREIGN_KEY_CHECKS = 0")
         for table in reversed(Base.metadata.sorted_tables):
-            await connection.exec_driver_sql(f"TRUNCATE TABLE `{table.name}`")
+            await connection.exec_driver_sql(f"DELETE FROM `{table.name}`")
         await connection.exec_driver_sql("SET FOREIGN_KEY_CHECKS = 1")
     async with factory() as session:
         yield session
