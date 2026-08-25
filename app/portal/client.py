@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import random
+import time
 from collections.abc import AsyncIterator, Callable, Mapping, Sequence
 from contextlib import asynccontextmanager
 from typing import Any, Final
@@ -64,6 +65,20 @@ DOCTOR_AUTOCOMPLETE_PATH: Final[str] = "/medici-autocomplete"
 
 #: The only care pathway this product covers.
 LAPI_SERVICE_TYPE: Final[str] = "lapi"
+
+#: Operations that submit a wizard form. The portal takes its time over these,
+#: while a JSON endpoint that has not answered in half a minute will not.
+SLOW_OPERATIONS: Final[frozenset[str]] = frozenset(
+    {
+        "login",
+        "select_patient",
+        "submit_service",
+        "submit_doctor",
+        "select_slot",
+        "confirm_booking",
+        "cancel_appointment",
+    }
+)
 
 PDF_MAGIC: Final[bytes] = b"%PDF-"
 _RETRYABLE_STATUS: Final[frozenset[int]] = frozenset({500, 502, 503, 504})
@@ -137,6 +152,7 @@ class PortalClient:
         transport: httpx.AsyncBaseTransport | None = None,
         sleep: Callable[[float], Any] | None = None,
         jitter: Callable[[], float] | None = None,
+        clock: Callable[[], float] | None = None,
     ) -> None:
         self._settings = settings
         self._limiter = limiter
@@ -144,6 +160,7 @@ class PortalClient:
         self._transport = transport
         self._sleep = sleep or asyncio.sleep
         self._jitter = jitter or (lambda: random.uniform(0.0, 0.4))
+        self._clock = clock or time.monotonic
 
     # --- session management ---------------------------------------------
     @asynccontextmanager
@@ -195,6 +212,7 @@ class PortalClient:
         """
         attempts = self._settings.portal_max_retries + 1 if allow_retry else 1
         last_error: Exception | None = None
+        started = self._clock()
 
         for attempt in range(attempts):
             await self._gate.acquire(operation=operation, account_key=session.account_key)
@@ -205,6 +223,7 @@ class PortalClient:
                         path,
                         data=data,
                         headers=dict(headers or {}),
+                        timeout=self._timeout_for(operation),
                     )
                 except (httpx.TimeoutException, httpx.TransportError) as exc:
                     last_error = PortalUnavailable("portal transport failure", operation=operation)
@@ -225,11 +244,31 @@ class PortalClient:
                     if not isinstance(outcome, PortalUnavailable | PortalRateLimited):
                         raise outcome
 
-            if attempt + 1 < attempts:
-                await self._sleep(self._backoff_delay(attempt, last_error))
+            if attempt + 1 >= attempts:
+                break
+            delay = self._backoff_delay(attempt, last_error)
+            spent = self._clock() - started
+            budget = self._settings.portal_operation_budget_seconds
+            if spent + delay >= budget:
+                logger.warning(
+                    "giving up on the portal to keep the wait bounded",
+                    extra={
+                        "event_code": "PORTAL_BUDGET_EXHAUSTED",
+                        "operation": operation,
+                        "attempt": attempt + 1,
+                        "seconds_spent": round(spent, 1),
+                    },
+                )
+                break
+            await self._sleep(delay)
 
         assert last_error is not None
         raise last_error
+
+    def _timeout_for(self, operation: str) -> float:
+        if operation in SLOW_OPERATIONS:
+            return self._settings.portal_slow_timeout_seconds
+        return self._settings.portal_timeout_seconds
 
     def _backoff_delay(self, attempt: int, error: Exception | None) -> float:
         if isinstance(error, PortalRateLimited) and error.retry_after_seconds:

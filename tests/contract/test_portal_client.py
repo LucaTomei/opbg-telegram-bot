@@ -328,6 +328,34 @@ async def test_cancellation_is_never_retried(settings: Settings) -> None:
     assert attempts["count"] == 1
 
 
+async def test_retrying_stops_once_the_time_budget_is_spent(settings: Settings) -> None:
+    """A flaky portal must not keep someone waiting for minutes.
+
+    Retrying is worth it while it is quick. Once the attempts have eaten the
+    budget, saying so beats a wait that reads as a broken bot.
+    """
+    attempts = {"count": 0}
+    now = {"value": 0.0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/appointments":
+            attempts["count"] += 1
+            # Each attempt burns most of the budget.
+            now["value"] += 50.0
+            return httpx.Response(503, text="unavailable")
+        return default_handler(request)
+
+    client = build_client(settings, handler)
+    # The clock is injectable precisely so this is testable.
+    client._clock = lambda: now["value"]
+
+    async with client.session(account_key="a") as portal_session:
+        with pytest.raises(PortalUnavailable):
+            await client.list_appointments(portal_session)
+
+    assert attempts["count"] == 2, "the budget must cut the retries short"
+
+
 async def test_a_wizard_step_is_retried_after_a_server_error(settings: Settings) -> None:
     """The portal is flaky; walking the wizard commits nothing, so retry it.
 

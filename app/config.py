@@ -106,9 +106,16 @@ class Settings(BaseSettings):
 
     # --- Portal ----------------------------------------------------------
     portal_base_url: str = "https://prenotazioni.ospedalebambinogesu.it"
-    # Measured against the real portal: choosing a doctor regularly takes
-    # more than thirty seconds, and timing out there loses the wizard step.
-    portal_timeout_seconds: Annotated[float, Field(gt=0, le=180)] = 60.0
+    # Reading a JSON endpoint is quick; waiting a full minute on one that is
+    # not answering only multiplies the wait by the number of retries.
+    portal_timeout_seconds: Annotated[float, Field(gt=0, le=180)] = 30.0
+    # Submitting a wizard form is slow: measured against the real portal,
+    # choosing a doctor regularly takes more than thirty seconds.
+    portal_slow_timeout_seconds: Annotated[float, Field(gt=0, le=180)] = 90.0
+    # A ceiling on one operation, retries included. Without it a flaky portal
+    # keeps a person waiting minutes before being told it did not work, which
+    # reads as a broken bot: better to give up early and let them try again.
+    portal_operation_budget_seconds: Annotated[float, Field(gt=0, le=600)] = 90.0
     portal_max_concurrency: Annotated[int, Field(ge=1, le=16)] = 2
     portal_user_agent: str = "OPBG-Booking-Assistant/1.0"
     portal_min_interval_ms: Annotated[int, Field(ge=0, le=60_000)] = 800
