@@ -263,7 +263,7 @@ class SearchService:
                 search_type=flow.selection.search_type.value,
             )
         availability = await self._client.fetch_availability(
-            flow.portal_session, service_id=service_id, location_ids=location_ids
+            flow.portal_session, service_id=service_id, location_ids=wanted
         )
         flow.availability = availability
         if not flow.locations and availability.locations:

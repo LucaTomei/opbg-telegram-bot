@@ -312,6 +312,10 @@ class PortalClient:
             )
         if status == 404:
             return PortalContractChanged("portal route not found", operation=operation)
+        if status == 400:
+            # The portal understood and refused: the request is wrong, and
+            # repeating it verbatim can only be refused again.
+            return PortalContractChanged("portal rejected the request", operation=operation)
         if status >= 400:
             return PortalUnavailable("unexpected portal status", operation=operation)
 

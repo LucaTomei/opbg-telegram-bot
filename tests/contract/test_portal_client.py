@@ -328,6 +328,29 @@ async def test_cancellation_is_never_retried(settings: Settings) -> None:
     assert attempts["count"] == 1
 
 
+async def test_a_rejected_request_is_not_retried(settings: Settings) -> None:
+    """400 means the request is wrong, and repeating it can only fail again.
+
+    The portal answers 400 to availability asked without a location. Treating
+    that as a fault burned four attempts and a minute of the user's time before
+    saying so.
+    """
+    attempts = {"count": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/appointments/disponibilita":
+            attempts["count"] += 1
+            return httpx.Response(400, json={"error": "Invalid request: missing parameters."})
+        return default_handler(request)
+
+    client = build_client(settings, handler)
+    async with client.session(account_key="a") as portal_session:
+        with pytest.raises(PortalContractChanged):
+            await client.fetch_availability(portal_session, service_id="9001", location_ids=["101"])
+
+    assert attempts["count"] == 1, "a refused request must not be repeated"
+
+
 async def test_a_session_the_portal_refuses_is_not_trusted(settings: Settings) -> None:
     """A stored jar the portal rejects must send us back to the login.
 

@@ -84,6 +84,31 @@ async def test_login_and_session_verification(live_settings: Settings) -> None:
 
 
 @requires_live
+async def test_a_stored_session_can_be_reused(live_settings: Settings) -> None:
+    """What the bot actually does: log in once, then reuse the saved jar.
+
+    Every other live test logs in from scratch, which is not how the deployed
+    bot works: it loads the cookies it stored earlier and only logs in again if
+    they no longer verify. A jar that cannot be reused breaks every request
+    while a fresh login keeps passing.
+    """
+    client = live_client(live_settings)
+    async with client.session(account_key="live") as first:
+        await client.login(first, PortalCredentials(LIVE_EMAIL, LIVE_PASSWORD))
+        stored = first.export_cookies()
+
+    assert stored, "the login stored no cookie at all"
+
+    async with client.session(account_key="live", cookies=stored) as second:
+        assert await client.verify_session(second) is True, (
+            "the portal refused a session it had just issued"
+        )
+        patients = await client.open_lapi_wizard(second)
+
+    assert patients, "the reused session reached no patient"
+
+
+@requires_live
 async def test_patients_and_autocomplete_are_readable(live_settings: Settings) -> None:
     client = live_client(live_settings)
     async with client.session(account_key="live") as session:

@@ -166,6 +166,13 @@ class FakePortal:
         if path == "/medici-autocomplete":
             return _json("doctor_autocomplete.json")
         if path == "/appointments/disponibilita":
+            body = request.content.decode("utf-8")
+            if "idUnitaErogante" not in body:
+                # What the portal answers when the location list is missing.
+                return httpx.Response(
+                    400,
+                    json={"error": "Invalid request: missing parameters."},
+                )
             return _json(self.availability_fixture)
         if path.endswith("/pdf-download"):
             return httpx.Response(
