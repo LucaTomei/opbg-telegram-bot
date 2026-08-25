@@ -8,9 +8,12 @@ appointment list has been reloaded and reconciled.
 
 from __future__ import annotations
 
+import asyncio
 import uuid
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Final
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -49,6 +52,10 @@ from app.services.search import SearchService
 logger = get_logger(__name__)
 
 BOOKING_LOCK_TIMEOUT_SECONDS = 15
+#: How many times the appointment list is read after a confirmation, and how
+#: long to wait between reads. The portal is often a step behind itself.
+RECONCILE_ATTEMPTS: Final[int] = 3
+RECONCILE_DELAY_SECONDS: Final[float] = 4.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -83,10 +90,13 @@ class BookingService:
         settings: Settings,
         client: PortalClient,
         search: SearchService,
+        *,
+        sleep: Callable[[float], Awaitable[None]] | None = None,
     ) -> None:
         self._settings = settings
         self._client = client
         self._search = search
+        self._sleep = sleep or asyncio.sleep
 
     def fingerprint_for(self, request: BookingRequest) -> str:
         return slot_fingerprint(
@@ -240,9 +250,28 @@ class BookingService:
                     },
                 )
 
-            after = await self._client.list_appointments(flow.portal_session)
+            # The portal does not always publish the new appointment by the time
+            # it answers the confirmation. Reading the list again a moment later
+            # is safe — it changes nothing — and turns what would be reported as
+            # an uncertain outcome into the success it actually is.
+            matched = None
+            after: tuple[PortalAppointment, ...] = ()
+            for attempt_index in range(RECONCILE_ATTEMPTS):
+                if attempt_index:
+                    await self._sleep(RECONCILE_DELAY_SECONDS)
+                after = await self._client.list_appointments(flow.portal_session)
+                matched = self._reconcile(before_ids, after, fresh, request)
+                if matched is not None:
+                    break
+                logger.info(
+                    "the appointment list does not show the booking yet",
+                    extra={
+                        "event_code": "BOOKING_RECONCILE_RETRY",
+                        "attempt_id": attempt.id.hex,
+                        "attempt": attempt_index + 1,
+                    },
+                )
             attempt.snapshot_after_hash = snapshot_hash([item.external_id for item in after])
-            matched = self._reconcile(before_ids, after, fresh, request)
 
         if matched is None:
             await attempts.finish(

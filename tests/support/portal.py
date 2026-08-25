@@ -66,6 +66,9 @@ class FakePortal:
     #: When ``True`` the appointment list never changes after a confirmation,
     #: which is exactly what an ambiguous outcome looks like.
     booking_is_ambiguous: bool = False
+    #: How many reads of the appointment list still show the old one after a
+    #: confirmation. The portal is often a step behind itself.
+    booking_appears_after_reads: int = 0
     #: When ``True`` the cancellation leaves the appointment in place.
     cancellation_is_ambiguous: bool = False
     #: Forces a status code for every request; used for breaker tests.
@@ -101,6 +104,7 @@ class FakePortal:
             "appointments_after_booking",
             "appointments_after_cancel",
             "booking_is_ambiguous",
+            "booking_appears_after_reads",
             "cancellation_is_ambiguous",
             "forced_status",
             "transient_failures",
@@ -197,6 +201,9 @@ class FakePortal:
         if self.cancelled:
             return self.appointments_after_cancel
         if self.booked and not self.booking_is_ambiguous:
+            if self.booking_appears_after_reads > 0:
+                self.booking_appears_after_reads -= 1
+                return self.appointments_fixture
             return self.appointments_after_booking
         return self.appointments_fixture
 
@@ -263,7 +270,7 @@ def build_container(settings: Settings, database: Database, portal: FakePortal) 
         invites=InviteService(settings),
         accounts=AccountService(settings, client, sessions, notifications),
         search=search,
-        bookings=BookingService(settings, client, search),
+        bookings=BookingService(settings, client, search, sleep=_no_sleep),
         appointments=AppointmentService(settings, client, sessions),
         watches=WatchService(settings),
         notifications=notifications,

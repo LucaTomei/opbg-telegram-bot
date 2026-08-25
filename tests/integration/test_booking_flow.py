@@ -161,6 +161,42 @@ async def test_booking_reconciles_the_new_appointment(
     assert stored.status is AppointmentStatus.PENDING
 
 
+async def test_a_list_that_lags_behind_is_not_an_ambiguous_outcome(
+    clean_session: AsyncSession,
+    container: Container,
+    user: TelegramUser,
+    portal: FakePortal,
+) -> None:
+    """The portal does not always publish the appointment straight away.
+
+    Reading the list once and giving up reports a booking that worked as
+    uncertain, which sends the user hunting through the portal for an
+    appointment that is simply not visible yet.
+    """
+    account, patient = await prepare(clean_session, user)
+    slots = await collect_slots(clean_session, container, account, patient)
+    portal.appointments_fixture = "appointments_list_empty.html"
+    portal.appointments_after_booking = "appointments_list.html"
+    # The first two reads still show the old list.
+    portal.booking_appears_after_reads = 2
+
+    result = await container.bookings.book(
+        clean_session,
+        BookingRequest(
+            account=account,
+            patient=patient,
+            selection=SELECTION,
+            slot_filter=FILTER,
+            slot=slots[0],
+            user_id=user.id,
+        ),
+    )
+
+    assert result.outcome.succeeded is True, "a slow list must not read as uncertain"
+    assert result.outcome.ambiguous is False
+    assert portal.confirmations == 1, "the confirmation must never be repeated"
+
+
 async def test_ambiguous_outcome_is_recorded_without_retry(
     clean_session: AsyncSession,
     container: Container,
