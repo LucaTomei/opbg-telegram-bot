@@ -21,6 +21,7 @@ SYNTHETIC_EMAIL = "utente@example.invalid"
         errors.PortalContractChanged("selector changed"),
         errors.PortalCaptchaRequired("recaptcha"),
         errors.NoAvailability("empty"),
+        errors.ServiceNotBookableOnline("no location"),
         errors.SlotNoLongerAvailable("gone"),
         errors.BookingAmbiguous("unclear"),
         errors.BookingRejected("refused"),

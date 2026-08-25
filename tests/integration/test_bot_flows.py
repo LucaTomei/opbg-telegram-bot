@@ -344,6 +344,28 @@ async def test_no_availability_offers_a_monitor(
     assert texts.BTN_CREATE_WATCH in " ".join(bot.last().buttons())
 
 
+async def test_a_service_without_locations_is_reported_as_not_bookable(
+    bot: BotHarness,
+    linked: tuple[PortalAccount, Patient],
+    member: TelegramUser,
+    bot_portal: FakePortal,
+) -> None:
+    """A service the portal does not offer online must say so.
+
+    Asking the portal for availability without a location earns a 400, which
+    would otherwise reach the user as a generic technical error.
+    """
+    account, patient = linked
+    bot_portal.locations_fixture = "appointments_create_no_locations.html"
+    service_button = await start_booking(bot, account, patient)
+    await bot.press(USER_ID, service_button)
+    await bot.send(USER_ID, "visita")
+    await bot.press(USER_ID, bot.find("Risultati per").callback_for("VISITA SINTETICA"))
+
+    assert bot.contains("non è prenotabile online")
+    assert not bot.contains("errore tecnico")
+
+
 # --- monitors ----------------------------------------------------------------
 async def test_the_monitor_list_is_empty_at_first(bot: BotHarness, member: TelegramUser) -> None:
     await bot.send(USER_ID, texts.BTN_WATCHES)

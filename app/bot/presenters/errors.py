@@ -34,6 +34,7 @@ from app.domain.errors import (
     QuotaExceededError,
     RateLimitedError,
     ReauthenticationRequired,
+    ServiceNotBookableOnline,
     SlotNoLongerAvailable,
     ValidationError,
 )
@@ -71,6 +72,7 @@ _MESSAGES: dict[type[DomainError], str] = {
         "Un'altra operazione è già in corso su questo account. Riprova tra poco."
     ),
     NoAvailability: texts.BOOK_NO_SLOTS,
+    ServiceNotBookableOnline: texts.BOOK_NOT_ONLINE,
     NotFoundError: texts.NOT_FOUND,
     OptimisticLockError: (
         "L'elemento è stato modificato nel frattempo. Riapri la schermata e riprova."

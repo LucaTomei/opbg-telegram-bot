@@ -85,6 +85,17 @@ class NoAvailability(PortalError):
     code = "NO_AVAILABILITY"
 
 
+class ServiceNotBookableOnline(PortalError):
+    """The portal offers the service, but not for booking online.
+
+    Such a service is returned by autocomplete and can be selected, yet the
+    step that follows exposes no location: the portal expects the appointment
+    to be arranged by phone or at the counter.
+    """
+
+    code = "SERVICE_NOT_BOOKABLE_ONLINE"
+
+
 class SlotNoLongerAvailable(PortalError):
     code = "SLOT_NO_LONGER_AVAILABLE"
 

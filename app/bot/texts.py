@@ -231,6 +231,11 @@ BOOK_NO_SLOTS: Final[str] = (
     "Nessuna disponibilità compatibile con i filtri attuali.\n"
     "Puoi modificare i filtri oppure creare un monitoraggio."
 )
+BOOK_NOT_ONLINE: Final[str] = (
+    "Questa prestazione non è prenotabile online.\n\n"
+    "Il portale non offre sedi per questa scelta: la prenotazione va fatta "
+    "telefonicamente o allo sportello. Prova con un'altra prestazione."
+)
 BOOK_SLOTS_TITLE: Final[str] = (
     "<b>Disponibilità</b>\nTrovate <b>{count}</b> proposte compatibili. Seleziona uno slot."
 )

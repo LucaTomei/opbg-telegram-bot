@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="csrf-token" content="SYNTHETIC-META-CSRF-0010">
+</head>
+<body>
+  <a href="/logout">Esci</a>
+  <!--
+    A service the portal lists but does not offer online: the step renders the
+    "every location" radio and nothing else, so there is no location to ask
+    availability for.
+  -->
+  <form method="POST" action="/appointments/create" id="appointment-form">
+    <input type="hidden" name="_token" value="SYNTHETIC-FORM-CSRF-0010">
+    <input type="hidden" name="session_id_prestazione" value="">
+    <input type="hidden" name="session_name_prestazione" value="">
+    <input type="hidden" name="selected_date" value="">
+    <input type="hidden" name="id_proposal" value="">
+
+    <div class="form-check">
+      <input class="form-check-input check-avaibility-filter" type="radio"
+             name="location" id="location-all" value="location-all">
+      <label for="location-all">Tutte le sedi</label>
+    </div>
+
+    <button type="submit">Continua</button>
+  </form>
+</body>
+</html>

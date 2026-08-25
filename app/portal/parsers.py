@@ -329,30 +329,41 @@ def _coerce_slot_datetime(day_key: str, time_key: str, proposal: Mapping[str, An
     return datetime.combine(day, moment)
 
 
+def _as_mapping(value: Any, field: str) -> Mapping[str, Any]:
+    """Read a portal field that is a map, tolerating an empty JSON array.
+
+    The portal is written in PHP, where an empty associative array serialises
+    as ``[]`` rather than ``{}``. An empty list therefore means "no entries",
+    not a broken contract: rejecting it turned every search without
+    availability into a technical error.
+    """
+    if value is None:
+        return {}
+    if isinstance(value, Mapping):
+        return value
+    if isinstance(value, Sequence) and not isinstance(value, str | bytes) and len(value) == 0:
+        return {}
+    raise PortalContractChanged(f"availability {field!r} is not an object")
+
+
 def parse_availability(payload: Any) -> PortalAvailability:
     """Normalise the ``/appointments/disponibilita`` JSON response."""
     if not isinstance(payload, Mapping):
         raise PortalContractChanged("availability payload is not an object")
 
-    raw_locations = payload.get("locations")
     locations: dict[str, str] = {}
-    if isinstance(raw_locations, Mapping):
-        for key, value in raw_locations.items():
-            locations[str(key)] = normalize_text(str(value))
+    for key, value in _as_mapping(payload.get("locations"), "locations").items():
+        locations[str(key)] = normalize_text(str(value))
 
     doctors: dict[str, str] = {}
-    raw_doctors = payload.get("doctors")
-    if isinstance(raw_doctors, Mapping):
-        for key, value in raw_doctors.items():
-            doctors[str(key)] = normalize_text(str(value))
+    for key, value in _as_mapping(payload.get("doctors"), "doctors").items():
+        doctors[str(key)] = normalize_text(str(value))
 
     slots: list[PortalSlot] = []
     counts: dict[str, int] = {}
-    dates_locations = payload.get("dates_locations")
-    if dates_locations is not None and not isinstance(dates_locations, Mapping):
-        raise PortalContractChanged("availability 'dates_locations' is not an object")
+    dates_locations = _as_mapping(payload.get("dates_locations"), "dates_locations")
 
-    for day_key, per_time in (dates_locations or {}).items():
+    for day_key, per_time in dates_locations.items():
         if not isinstance(per_time, Mapping):
             continue
         for time_key, proposals in per_time.items():

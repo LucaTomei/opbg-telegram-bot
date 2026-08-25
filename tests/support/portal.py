@@ -54,6 +54,7 @@ class FakePortal:
     #: ``availability.json`` by default; set to an empty payload to simulate
     #: "no slot", or to a different fixture to change the offered proposals.
     availability_fixture: str = "availability.json"
+    locations_fixture: str = "appointments_create_locations.html"
     #: Appointment list returned before and after a booking.
     appointments_fixture: str = "appointments_list.html"
     appointments_after_booking: str = "appointments_list_after_booking.html"
@@ -87,6 +88,7 @@ class FakePortal:
         for name in (
             "valid_credentials",
             "availability_fixture",
+            "locations_fixture",
             "appointments_fixture",
             "appointments_after_booking",
             "appointments_after_cancel",
@@ -188,7 +190,7 @@ class FakePortal:
         if "id_proposal=" in body:
             return _html(load("appointments_confirm.html"))
         if "service=" in body or "medico=" in body:
-            return _html(load("appointments_create_locations.html"))
+            return _html(load(self.locations_fixture))
         return _html(load("appointments_create_slots.html"))
 
 

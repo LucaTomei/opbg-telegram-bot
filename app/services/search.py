@@ -34,6 +34,7 @@ from app.domain.errors import (
     AmbiguousSearchResult,
     NoAvailability,
     NotFoundError,
+    ServiceNotBookableOnline,
     ValidationError,
 )
 from app.domain.filters import apply_filter, deduplicate
@@ -246,10 +247,21 @@ class SearchService:
     async def fetch_availability(
         self, flow: AvailabilityFlow, *, location_ids: Sequence[str] = ()
     ) -> PortalAvailability:
-        """Read availability for the current wizard stage."""
+        """Read availability for the current wizard stage.
+
+        The portal answers ``400`` when asked for availability without a
+        location, so a service that exposes none is reported as not bookable
+        online instead of failing as a technical error.
+        """
         service_id = flow.selection.service_id or ""
         if not service_id and flow.locations:
             service_id = ""
+        wanted = list(location_ids) or [item.location_id for item in flow.locations]
+        if not wanted:
+            raise ServiceNotBookableOnline(
+                "the portal exposes no location for this selection",
+                search_type=flow.selection.search_type.value,
+            )
         availability = await self._client.fetch_availability(
             flow.portal_session, service_id=service_id, location_ids=location_ids
         )

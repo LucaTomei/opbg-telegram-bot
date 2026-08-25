@@ -211,6 +211,22 @@ def test_location_options_are_read_from_checkboxes() -> None:
     }
 
 
+def test_an_empty_availability_serialised_as_an_array_is_not_a_contract_change() -> None:
+    """PHP serialises an empty associative array as ``[]``.
+
+    The portal answers that way when nothing is available, so treating it as a
+    broken contract turned every fruitless search into a technical error.
+    """
+    availability = parsers.parse_availability(json_fixture("availability_php_empty.json"))
+    assert availability.slots == ()
+    assert availability.locations == ()
+
+
+def test_a_non_empty_availability_field_of_the_wrong_type_is_still_refused() -> None:
+    with pytest.raises(PortalContractChanged):
+        parsers.parse_availability({"dates_locations": ["unexpected"]})
+
+
 def test_location_options_are_read_from_the_radio_group() -> None:
     """The portal renders one radio per location, valued ``location-<id>``.
 
