@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from typing import Any
 
@@ -106,14 +107,23 @@ def default_handler(request: httpx.Request) -> httpx.Response:
         return html(load("appointments_create_lapi.html"))
     if path == "/appointments/create":
         body = request.content.decode("utf-8")
-        if "tax_code=" in body:
-            return html(load("appointments_create_lapi.html"))
-        if "confirm=true" in body:
+
+        def sent(field: str) -> bool:
+            """True when the field carries a value, not merely a name.
+
+            The wizard resubmits its whole form, so every field is present at
+            every step and only the filled ones say which step this is.
+            """
+            return re.search(rf"(^|&){field}=[^&]", body) is not None
+
+        if sent("confirm"):
             return html(load("appointments_confirm.html"))
-        if "id_proposal=" in body:
+        if sent("id_proposal"):
             return html(load("appointments_confirm.html"))
-        if "service=" in body or "medico=" in body:
+        if sent("service") or sent("medico"):
             return html(load("appointments_create_locations.html"))
+        if sent("tax_code"):
+            return html(load("appointments_create_lapi.html"))
         return html(load("appointments_create_slots.html"))
     if path == "/service-autocomplete":
         return json_response("service_autocomplete.json")
@@ -294,6 +304,62 @@ async def test_confirmation_is_never_retried(settings: Settings) -> None:
         with pytest.raises(PortalUnavailable):
             await client.confirm_booking(portal_session)
     assert attempts["count"] == 1
+
+
+async def test_cancellation_is_never_retried(settings: Settings) -> None:
+    """A lost response is indistinguishable from a refusal, so never replay."""
+    attempts = {"count": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "/cancel" in request.url.path:
+            attempts["count"] += 1
+            return httpx.Response(502, text="bad gateway")
+        return default_handler(request)
+
+    client = build_client(settings, handler)
+    async with client.session(account_key="a") as portal_session:
+        with pytest.raises(PortalUnavailable):
+            await client.cancel_appointment(
+                portal_session,
+                appointment_id="9001",
+                tax_code="AAABBB01A01A001A",
+                cancel_path=None,
+            )
+    assert attempts["count"] == 1
+
+
+async def test_a_wizard_step_is_retried_after_a_server_error(settings: Settings) -> None:
+    """The portal is flaky; walking the wizard commits nothing, so retry it.
+
+    Choosing a doctor or a service creates no appointment, and giving up on the
+    first 500 ends the conversation for a fault that clears by itself.
+    """
+    attempts = {"count": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = request.content.decode("utf-8") if request.method == "POST" else ""
+        if request.method == "POST" and "medico=" in body:
+            attempts["count"] += 1
+            if attempts["count"] < 3:
+                return httpx.Response(500, text="server error")
+        return default_handler(request)
+
+    client = build_client(settings, handler)
+    async with client.session(account_key="a") as portal_session:
+        await client.open_lapi_wizard(portal_session)
+        await client.select_patient(portal_session, "AAABBB01A01A001A")
+        _, locations = await client.submit_doctor_choice(
+            portal_session,
+            PortalDoctor(
+                raw_value="SINTETICO_UNO",
+                description="DOTT. SINTETICO UNO",
+                last_name="SINTETICO",
+                first_name="UNO",
+            ),
+        )
+
+    assert attempts["count"] == 3, "the step must be retried, not abandoned"
+    assert {item.location_id for item in locations} == {"101", "202"}
 
 
 # --- wizard ------------------------------------------------------------------

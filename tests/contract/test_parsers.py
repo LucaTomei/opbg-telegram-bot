@@ -122,8 +122,18 @@ def test_service_payload_of_the_wrong_shape_raises() -> None:
 
 
 def test_doctors_are_normalised() -> None:
+    """The submitted value is ``cognome_nome``, as the portal builds it.
+
+    The description is what the user reads; sending it as the value earns a
+    server error on the step that follows.
+    """
     doctors = parsers.parse_doctors(json_fixture("doctor_autocomplete.json"))
     assert [doctor.raw_value for doctor in doctors] == [
+        "SINTETICO_UNO",
+        "SINTETICA_DUE",
+        "SENZA_DESCRIZIONE",
+    ]
+    assert [doctor.description for doctor in doctors] == [
         "DOTT. SINTETICO UNO",
         "DOTT.SSA SINTETICA DUE",
         "SENZA DESCRIZIONE",
@@ -209,6 +219,26 @@ def test_location_options_are_read_from_checkboxes() -> None:
         ("101", "Sede Alfa"),
         ("202", "Sede Beta"),
     }
+
+
+def test_the_appointment_day_is_read_from_the_card_header() -> None:
+    """The card writes the day in its header and only the hour among the fields.
+
+    An appointment left undated cannot be sorted, reminded about or compared
+    against the portal on the next sync, so the header is the fallback.
+    """
+    appointments = parsers.parse_appointments(load("appointments_list_header_date.html"))
+    assert len(appointments) == 1
+    appointment = appointments[0]
+    assert appointment.external_id == "90001"
+    assert appointment.scheduled_at_local is not None
+    assert appointment.scheduled_at_local.date().isoformat() == "2026-09-12"
+    assert appointment.scheduled_at_local.strftime("%H:%M") == "10:40"
+    # Europe/Rome is two hours ahead of UTC in September.
+    assert appointment.scheduled_at_utc is not None
+    assert appointment.scheduled_at_utc.strftime("%H:%M") == "08:40"
+    assert appointment.pdf_path == "/appointments/90001/pdf-download"
+    assert appointment.cancel_path == "/appointments/90001/cancel"
 
 
 def test_an_empty_availability_serialised_as_an_array_is_not_a_contract_change() -> None:

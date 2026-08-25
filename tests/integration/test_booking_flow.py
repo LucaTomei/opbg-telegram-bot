@@ -68,7 +68,10 @@ async def test_search_returns_doctor_results(
     doctors = await container.search.search_doctors(
         clean_session, account, patient, query="sintetico"
     )
-    assert doctors[0].raw_value == "DOTT. SINTETICO UNO"
+    # The value the portal expects back is ``cognome_nome``; the description is
+    # what the user reads.
+    assert doctors[0].raw_value == "SINTETICO_UNO"
+    assert doctors[0].description == "DOTT. SINTETICO UNO"
 
 
 async def test_availability_is_collected_and_filtered(

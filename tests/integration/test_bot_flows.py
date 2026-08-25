@@ -177,7 +177,8 @@ async def test_a_doctor_search_keeps_the_doctor_constraint(
     async with database.read_session() as session:
         draft = await BookingDraftRepository(session).latest_open(member.id)
         assert draft is not None
-        assert draft.selected_doctor_external_id == "DOTT. SINTETICO UNO"
+        # The draft stores what the portal expects back, not the label.
+        assert draft.selected_doctor_external_id == "SINTETICO_UNO"
 
 
 async def test_filters_can_be_edited_from_the_wizard(

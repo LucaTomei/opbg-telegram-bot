@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="csrf-token" content="SYNTHETIC-META-CSRF-0011">
+</head>
+<body>
+  <a href="/logout">Esci</a>
+  <!--
+    The shape the portal actually renders: the day lives in the card header,
+    written in Italian, and the labelled fields carry only the hour. A parser
+    that looks for a "Data" label finds none and leaves the appointment undated.
+  -->
+  <div id="appointments-list">
+    <div class="appointment   pending ">
+      <section class="appointment-header">
+        12 settembre 2026
+        <div class="toggle-icon"></div>
+      </section>
+      <section class="appointment-body collapse">
+        <div class="row">
+          <div class="col-12">
+            <div class="appointment-info appointment-info--service">
+              <div class="appointment-info__icon"></div>
+              <div class="appointment-info__label">Prestazione</div>
+              <div class="appointment-info__text">VISITA SINTETICA CARDIOLOGICA</div>
+            </div>
+            <div class="appointment-info appointment-info--when">
+              <div class="appointment-info__icon"></div>
+              <div class="appointment-info__label">Ora</div>
+              <div class="appointment-info__text">10:40</div>
+            </div>
+            <div class="appointment-info appointment-info--where">
+              <div class="appointment-info__icon"></div>
+              <div class="appointment-info__label">Sede</div>
+              <div class="appointment-info__text">Sede Gamma</div>
+            </div>
+            <div class="appointment-info appointment-info--doctor">
+              <div class="appointment-info__icon"></div>
+              <div class="appointment-info__label">Medico</div>
+              <div class="appointment-info__text">Dr. NOME SINTETICO</div>
+            </div>
+            <div class="appointment-info  appointment-info--patient ">
+              <div class="appointment-info__icon"></div>
+              <div class="appointment-info__label">Paziente</div>
+              <div class="appointment-info__text">PAZIENTE SINTETICO</div>
+            </div>
+            <div class="appointment-info appointment-info--payment-status">
+              <div class="appointment-info__icon nok"></div>
+              <div class="appointment-info__label">Stato</div>
+              <div class="appointment-info__text">Non pagato</div>
+            </div>
+            <div class="appointment-info__buttons">
+              <a href="/appointments/90001/pdf-download">Scarica promemoria</a>
+              <span class="btn-appointment-list btn-appointment-list--cancel"
+                    data-href="/appointments/90001/cancel">Disdici</span>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+</body>
+</html>

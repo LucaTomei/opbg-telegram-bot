@@ -7,6 +7,7 @@ and can be steered to reproduce failures, lost slots and ambiguous outcomes.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -181,16 +182,25 @@ class FakePortal:
 
     def _handle_create(self, request: httpx.Request) -> httpx.Response:
         body = request.content.decode("utf-8")
-        if "tax_code=" in body:
-            return _html(load("appointments_create_lapi.html"))
-        if "confirm=true" in body:
+
+        def sent(field: str) -> bool:
+            """True when the field carries a value, not merely a name.
+
+            The wizard resubmits its whole form, so every field is present at
+            every step and only the filled ones say which step this is.
+            """
+            return re.search(rf"(^|&){field}=[^&]", body) is not None
+
+        if sent("confirm"):
             self.confirmations += 1
             self.booked = True
             return _html(load("appointments_confirm.html"))
-        if "id_proposal=" in body:
+        if sent("id_proposal"):
             return _html(load("appointments_confirm.html"))
-        if "service=" in body or "medico=" in body:
+        if sent("service") or sent("medico"):
             return _html(load(self.locations_fixture))
+        if sent("tax_code"):
+            return _html(load("appointments_create_lapi.html"))
         return _html(load("appointments_create_slots.html"))
 
 

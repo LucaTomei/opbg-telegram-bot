@@ -299,14 +299,23 @@ def parse_doctors(payload: Any) -> tuple[PortalDoctor, ...]:
         first_name = normalize_text(str(entry.get("nome") or ""))
         if not description and not last_name:
             continue
-        raw_value = description or f"{last_name} {first_name}".strip()
+        # The portal builds the radio value as ``cognome_nome``; sending the
+        # description instead earns a server error on the next step.
+        if last_name and first_name:
+            raw_value = f"{last_name}_{first_name}"
+        elif last_name:
+            raw_value = last_name
+        else:
+            raw_value = description.replace(" ", "_")
+        # What the user reads keeps its spaces, whatever the portal wants back.
+        display = description or f"{last_name} {first_name}".strip()
         if raw_value in seen:
             continue
         seen.add(raw_value)
         doctors.append(
             PortalDoctor(
                 raw_value=raw_value,
-                description=description or raw_value,
+                description=display,
                 last_name=last_name,
                 first_name=first_name,
                 gender=normalize_text(str(entry.get("sesso") or "")) or None,
@@ -626,6 +635,14 @@ def parse_appointments(html: str) -> tuple[PortalAppointment, ...]:
     return tuple(appointments)
 
 
+def _header_date(node: Node) -> date | None:
+    """Read the day from the header of an appointment card."""
+    header = node.css_first(".appointment-header")
+    if header is None:
+        return None
+    return parse_date(header.text(deep=False, strip=True)) or parse_date(header.text(strip=True))
+
+
 def _parse_appointment_node(node: Node) -> PortalAppointment | None:
     values: dict[str, str] = {}
     labels = node.css(".appointment-info__label")
@@ -646,6 +663,10 @@ def _parse_appointment_node(node: Node) -> PortalAppointment | None:
         return None
 
     day = parse_date(values.get("date") or values.get("datetime"))
+    if day is None:
+        # The card carries the day in its header and only the hour among the
+        # labelled fields, so a card with no "Data" label is not undated.
+        day = _header_date(node)
     moment = parse_time(values.get("time") or values.get("datetime") or "")
     scheduled_local = None
     scheduled_utc = None
@@ -781,13 +802,43 @@ def parse_location_options(html: str) -> tuple[PortalLocation, ...]:
     )
 
 
+def parse_form_fields(html: str, *, form_id: str = "appointment-form") -> dict[str, str]:
+    """Read the fields of a wizard form as the browser would resubmit them.
+
+    Radios and checkboxes are left out: they carry the choice the user is about
+    to make, and the caller supplies it. Everything else is the state the portal
+    expects to receive back, and omitting part of it makes the doctor step fail
+    with a server error.
+    """
+    document = HTMLParser(html)
+    form = document.css_first(f"form#{form_id}")
+    if form is None:
+        return {}
+    fields: dict[str, str] = {}
+    for element in form.css("input, select, textarea"):
+        name = element.attributes.get("name") or ""
+        kind = (element.attributes.get("type") or element.tag).lower()
+        if not name or kind in {"radio", "checkbox", "password", "submit", "button", "file"}:
+            continue
+        if element.tag == "select":
+            chosen = element.css_first("option[selected]")
+            fields[name] = normalize_text(chosen.attributes.get("value") or "") if chosen else ""
+            continue
+        fields[name] = normalize_text(element.attributes.get("value") or "")
+    return fields
+
+
 def parse_session_service_fields(html: str) -> dict[str, str]:
     """Read the hidden ``session_*_prestazione`` fields kept between steps."""
     document = HTMLParser(html)
     fields: dict[str, str] = {}
     for element in document.css('input[type="hidden"]'):
         name = element.attributes.get("name") or ""
-        if name.startswith("session_") or name in {"id_specification", "servicetype"}:
+        if name.startswith("session_") or name in {
+            "id_specification",
+            "servicetype",
+            "service_type",
+        }:
             fields[name] = normalize_text(element.attributes.get("value") or "")
     return fields
 

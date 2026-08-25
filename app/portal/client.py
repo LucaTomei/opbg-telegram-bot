@@ -62,6 +62,9 @@ AVAILABILITY_PATH: Final[str] = "/appointments/disponibilita"
 SERVICE_AUTOCOMPLETE_PATH: Final[str] = "/service-autocomplete"
 DOCTOR_AUTOCOMPLETE_PATH: Final[str] = "/medici-autocomplete"
 
+#: The only care pathway this product covers.
+LAPI_SERVICE_TYPE: Final[str] = "lapi"
+
 PDF_MAGIC: Final[bytes] = b"%PDF-"
 _RETRYABLE_STATUS: Final[frozenset[int]] = frozenset({500, 502, 503, 504})
 
@@ -181,8 +184,14 @@ class PortalClient:
     ) -> httpx.Response:
         """Issue one portal request with rate limiting, retries and error mapping.
 
-        ``allow_retry`` must be ``False`` for every mutating request: a booking
-        confirmation or a cancellation is never replayed automatically.
+        ``allow_retry`` must be ``False`` for a request that creates or destroys
+        an appointment: a booking confirmation or a cancellation is never
+        replayed automatically, because a lost response is indistinguishable
+        from a refusal.
+
+        Everything else — logging in, walking the wizard, reading availability —
+        may be retried. Those steps commit nothing, and the portal is flaky
+        enough that a single server error would otherwise end the conversation.
         """
         attempts = self._settings.portal_max_retries + 1 if allow_retry else 1
         last_error: Exception | None = None
@@ -323,7 +332,6 @@ class PortalClient:
             form.action or LOGIN_PATH,
             operation="login",
             data=payload,
-            allow_retry=False,
         )
         challenge = parsers.detect_portal_challenge(response.text)
         if challenge:
@@ -418,7 +426,6 @@ class PortalClient:
             form.action or CREATE_PATH,
             operation="select_patient",
             data=form.payload(overrides),
-            allow_retry=False,
         )
         html = response.text
         session.wizard = WizardState(
@@ -431,6 +438,21 @@ class PortalClient:
         )
         return html
 
+    def _autocomplete_payload(
+        self, session: PortalSession, *, query: str, tax_code: str
+    ) -> dict[str, str]:
+        """The fields the wizard sends to both autocomplete endpoints.
+
+        ``service_type`` is not optional: the service endpoint answers without
+        it, the doctor one replies with a server error.
+        """
+        return {
+            "_token": session.csrf_token,
+            "service": query,
+            "tax_code": tax_code,
+            "service_type": session.wizard.session_fields.get("service_type") or LAPI_SERVICE_TYPE,
+        }
+
     async def autocomplete_services(
         self, session: PortalSession, *, query: str, tax_code: str
     ) -> tuple[PortalService, ...]:
@@ -439,11 +461,7 @@ class PortalClient:
             "POST",
             SERVICE_AUTOCOMPLETE_PATH,
             operation="service_autocomplete",
-            data={
-                "_token": session.csrf_token,
-                "service": query,
-                "tax_code": tax_code,
-            },
+            data=self._autocomplete_payload(session, query=query, tax_code=tax_code),
             headers={"X-Requested-With": "XMLHttpRequest"},
             expect_json=True,
         )
@@ -457,11 +475,7 @@ class PortalClient:
             "POST",
             DOCTOR_AUTOCOMPLETE_PATH,
             operation="doctor_autocomplete",
-            data={
-                "_token": session.csrf_token,
-                "service": query,
-                "tax_code": tax_code,
-            },
+            data=self._autocomplete_payload(session, query=query, tax_code=tax_code),
             headers={"X-Requested-With": "XMLHttpRequest"},
             expect_json=True,
         )
@@ -471,18 +485,14 @@ class PortalClient:
         self, session: PortalSession, service: PortalService
     ) -> tuple[str, tuple[PortalLocation, ...]]:
         """Submit the exact service selected by the user."""
-        payload = {
-            "_token": session.csrf_token,
-            "id_specification": service.specification_id or "",
-            "servicetype": "lapi",
-            "service": service.service_id,
-            "service_name": service.description,
-        }
+        payload = self._wizard_payload(session)
         payload.update(
             {
-                key: value
-                for key, value in session.wizard.session_fields.items()
-                if key not in payload
+                "_token": session.csrf_token,
+                "id_specification": service.specification_id or "",
+                "servicetype": LAPI_SERVICE_TYPE,
+                "service": service.service_id,
+                "service_name": service.description,
             }
         )
         response = await self._request(
@@ -491,7 +501,6 @@ class PortalClient:
             CREATE_PATH,
             operation="submit_service",
             data=payload,
-            allow_retry=False,
         )
         return self._absorb_search_step(session, response.text)
 
@@ -499,17 +508,13 @@ class PortalClient:
         self, session: PortalSession, doctor: PortalDoctor, *, specification_id: str = ""
     ) -> tuple[str, tuple[PortalLocation, ...]]:
         """Submit the exact doctor selected by the user."""
-        payload = {
-            "_token": session.csrf_token,
-            "id_specification": specification_id,
-            "servicetype": "lapi",
-            "medico": doctor.raw_value,
-        }
+        payload = self._wizard_payload(session)
         payload.update(
             {
-                key: value
-                for key, value in session.wizard.session_fields.items()
-                if key not in payload
+                "_token": session.csrf_token,
+                "id_specification": specification_id,
+                "servicetype": LAPI_SERVICE_TYPE,
+                "medico": doctor.raw_value,
             }
         )
         response = await self._request(
@@ -518,9 +523,18 @@ class PortalClient:
             CREATE_PATH,
             operation="submit_doctor",
             data=payload,
-            allow_retry=False,
         )
         return self._absorb_search_step(session, response.text)
+
+    def _wizard_payload(self, session: PortalSession) -> dict[str, str]:
+        """Resubmit the wizard form as the browser does, choice excluded.
+
+        The portal keeps part of its state in hidden fields and answers with a
+        server error when they come back incomplete.
+        """
+        payload = parsers.parse_form_fields(session.wizard.html)
+        payload.update(session.wizard.session_fields)
+        return payload
 
     def _absorb_search_step(
         self, session: PortalSession, html: str
@@ -606,7 +620,6 @@ class PortalClient:
             action,
             operation="select_slot",
             data=payload,
-            allow_retry=False,
         )
         html = response.text
         session.wizard = WizardState(

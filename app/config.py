@@ -106,7 +106,9 @@ class Settings(BaseSettings):
 
     # --- Portal ----------------------------------------------------------
     portal_base_url: str = "https://prenotazioni.ospedalebambinogesu.it"
-    portal_timeout_seconds: Annotated[float, Field(gt=0, le=180)] = 30.0
+    # Measured against the real portal: choosing a doctor regularly takes
+    # more than thirty seconds, and timing out there loses the wizard step.
+    portal_timeout_seconds: Annotated[float, Field(gt=0, le=180)] = 60.0
     portal_max_concurrency: Annotated[int, Field(ge=1, le=16)] = 2
     portal_user_agent: str = "OPBG-Booking-Assistant/1.0"
     portal_min_interval_ms: Annotated[int, Field(ge=0, le=60_000)] = 800
