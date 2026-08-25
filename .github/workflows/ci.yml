@@ -154,14 +154,18 @@ jobs:
   image:
     name: Immagine Docker
     needs: [guardrails, quality]
-    # Runs when the image content changed, but never publishes an image whose
-    # tests failed. `always()` is required because `quality` is skipped when the
-    # change does not touch the code.
+    # On main the image must always match main. Filtering there leaves the
+    # registry behind whenever a run fails and the fix touches only files the
+    # image does not contain: the fix goes green, the image is skipped, and what
+    # is published stays old. Pull requests keep the filter, and no run ever
+    # publishes an image whose tests failed. `always()` is required because
+    # `quality` is skipped when the change does not touch the code.
     if: >-
       always()
-      && needs.guardrails.outputs.image == 'true'
       && needs.quality.result != 'failure'
       && needs.quality.result != 'cancelled'
+      && (needs.guardrails.outputs.image == 'true'
+          || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
     runs-on: [self-hosted, linux, x64, docker]
     timeout-minutes: 30
     permissions:
