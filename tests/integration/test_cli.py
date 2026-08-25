@@ -52,6 +52,15 @@ async def test_healthcheck_succeeds_against_a_migrated_database(
     assert await cli.run_command(["healthcheck"]) == 0
 
 
+async def test_portal_check_reports_an_unreachable_host() -> None:
+    """The check must fail loudly when this host cannot reach the portal.
+
+    The test settings point at a synthetic host that does not resolve, which is
+    exactly the situation the command exists to name.
+    """
+    assert await cli.run_command(["portal-check"]) == 1
+
+
 async def test_bootstrap_admins_promotes_the_configured_ids(
     clean_session: AsyncSession, database: Database
 ) -> None:

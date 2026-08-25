@@ -216,6 +216,25 @@ docker compose exec mysql mysql -uroot -p -e \
 Solo dopo il controllo si può decidere di puntare l'applicazione al database
 ripristinato, fermando prima `bot` e `worker`.
 
+## Il portale non risponde solo dal server
+
+Una ricerca che fallisce dal bot ma funziona dal telefono non è quasi mai il
+flusso: è la risoluzione dei nomi, l'uscita verso Internet, o il portale che
+risponde in modo diverso a quell'host. Il comando lo dice senza credenziali e
+senza prenotare niente:
+
+```bash
+docker compose exec bot python -m app.cli portal-check
+```
+
+- `PORTAL_CHECK_DNS_FAILED`: il nome non si risolve. Guarda il DNS del
+  container, tipicamente un resolver locale che filtra.
+- `PORTAL_CHECK_UNREACHABLE`: il nome si risolve ma la connessione non parte o
+  scade. È l'uscita verso Internet.
+- `PORTAL_CHECK_DONE` con `status_code` 200: l'host raggiunge il portale, e il
+  problema è nella sessione o nel percorso applicativo. In quel caso cerca
+  `PORTAL_HTTP_ERROR` nei log del bot: riporta operazione, stato e tentativo.
+
 ## Aggiornamento e rollback
 
 ```bash

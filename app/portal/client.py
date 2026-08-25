@@ -240,6 +240,19 @@ class PortalClient:
                     outcome = self._classify(response, operation=operation, expect_json=expect_json)
                     if outcome is None:
                         return response
+                    # Without this the logs show only the final domain error and
+                    # give no way to tell a portal fault from a local one.
+                    logger.warning(
+                        "portal refused the request",
+                        extra={
+                            "event_code": "PORTAL_HTTP_ERROR",
+                            "operation": operation,
+                            "attempt": attempt + 1,
+                            "status_code": response.status_code,
+                            "content_type": response.headers.get("content-type", ""),
+                            "error_type": type(outcome).__name__,
+                        },
+                    )
                     last_error = outcome
                     if not isinstance(outcome, PortalUnavailable | PortalRateLimited):
                         raise outcome

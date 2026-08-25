@@ -136,6 +136,73 @@ async def _record_backup(args: argparse.Namespace) -> int:
     return 0
 
 
+async def _portal_check() -> int:
+    """Report whether this host can reach the portal, and how fast.
+
+    A booking that fails from a server but works from a phone is almost never
+    the flow: it is DNS, egress or the portal answering that host differently.
+    This says which, without credentials and without booking anything.
+    """
+    import socket
+    import time
+
+    import httpx
+
+    settings = get_settings()
+    host = httpx.URL(settings.portal_base_url).host
+    outcome = 0
+
+    try:
+        infos = socket.getaddrinfo(host, 443, proto=socket.IPPROTO_TCP)
+        addresses = sorted({info[4][0] for info in infos})
+        logger.info(
+            "portal name resolved",
+            extra={"event_code": "PORTAL_CHECK_DNS", "host": host, "addresses": addresses},
+        )
+    except OSError as exc:
+        logger.error(
+            "the portal name does not resolve from this host",
+            extra={"event_code": "PORTAL_CHECK_DNS_FAILED", "host": host, "detail": str(exc)},
+        )
+        return 1
+
+    started = time.monotonic()
+    try:
+        async with httpx.AsyncClient(
+            base_url=settings.portal_base_url,
+            timeout=settings.portal_timeout_seconds,
+            follow_redirects=True,
+            headers={"User-Agent": settings.portal_user_agent},
+        ) as client:
+            response = await client.get("/login")
+    except (httpx.TimeoutException, httpx.TransportError) as exc:
+        logger.error(
+            "the portal is not reachable from this host",
+            extra={
+                "event_code": "PORTAL_CHECK_UNREACHABLE",
+                "host": host,
+                "seconds": round(time.monotonic() - started, 1),
+                "error_type": type(exc).__name__,
+            },
+        )
+        return 1
+
+    elapsed = round(time.monotonic() - started, 1)
+    if response.status_code >= 400:
+        outcome = 1
+    logger.info(
+        "portal answered",
+        extra={
+            "event_code": "PORTAL_CHECK_DONE",
+            "host": host,
+            "status_code": response.status_code,
+            "seconds": elapsed,
+            "bytes": len(response.content),
+        },
+    )
+    return outcome
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Build the command line parser; kept separate so tests can reuse it."""
     parser = argparse.ArgumentParser(prog="opbg", description="Operational commands")
@@ -146,6 +213,7 @@ def build_parser() -> argparse.ArgumentParser:
     downgrade = subparsers.add_parser("downgrade", help="revert to a specific revision")
     downgrade.add_argument("target", help="target revision, for example -1")
     subparsers.add_parser("healthcheck", help="verify configuration and database")
+    subparsers.add_parser("portal-check", help="verify this host can reach the portal")
     subparsers.add_parser("bootstrap-admins", help="synchronise administrators from the env")
     subparsers.add_parser("cleanup", help="apply the retention policy once")
     backup = subparsers.add_parser("record-backup", help="record a backup outcome")
@@ -167,6 +235,7 @@ async def run_command(argv: list[str] | None = None) -> int:
         "healthcheck": _healthcheck,
         "bootstrap-admins": _bootstrap_admins,
         "cleanup": _cleanup,
+        "portal-check": _portal_check,
     }
     handler = handlers.get(args.command)
     if handler is not None:

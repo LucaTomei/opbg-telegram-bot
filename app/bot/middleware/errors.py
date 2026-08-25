@@ -59,7 +59,13 @@ class ErrorBoundaryMiddleware(BaseMiddleware):
         except DomainError as exc:
             logger.info(
                 "handled domain error",
-                extra={"event_code": exc.code, "correlation_id": correlation_id},
+                extra={
+                    "event_code": exc.code,
+                    "correlation_id": correlation_id,
+                    # The context says which portal operation failed; without it
+                    # the log names the symptom and not the step.
+                    **exc.context,
+                },
             )
             await _notify(event, describe_error(exc, correlation_id))
             return None
