@@ -147,14 +147,22 @@ soddisfatta, con le sole eccezioni dichiarate nella sezione seguente.
 
 ### Eseguite
 
+Il percorso di ricerca è stato verificato **in produzione**, dal bot, contro il
+portale reale: ricerca per medico, scelta della prestazione fra quelle che il
+medico esegue, sedi, disponibilità (40 proposte con sede, medico e costo),
+elenco appuntamenti con data e ora, promemoria PDF consegnato in chat.
+
+
 Il percorso di lettura è stato verificato contro il portale reale, con un
 account autorizzato e la suite `-m live`. Ha rivelato sei difetti che il
 portale sintetico non poteva mostrare, tutti corretti e coperti da test:
 il barattolo dei cookie appiattito, le sedi lette da un markup che il portale
 non usa, la mappa vuota serializzata da PHP come array, la data
 dell'appuntamento scritta solo nell'intestazione della scheda, il valore del
-medico atteso come `cognome_nome`, e i passi del wizard marcati non
-ritentabili su un portale che risponde `500` con regolarità.
+medico atteso come `cognome_nome`, i passi del wizard marcati non ritentabili
+su un portale che risponde `500` con regolarità, la disponibilità richiesta
+senza le sedi appena risolte, e la prestazione mancante nel percorso per
+medico: il portale non quota un medico da solo e la scelta va chiesta.
 
 ### Aperta
 
