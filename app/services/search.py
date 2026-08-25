@@ -13,7 +13,7 @@ from __future__ import annotations
 import unicodedata
 from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -32,6 +32,7 @@ from app.domain.entities import (
 from app.domain.enums import LocationMode, SearchType
 from app.domain.errors import (
     AmbiguousSearchResult,
+    DoctorServiceRequired,
     NoAvailability,
     NotFoundError,
     ServiceNotBookableOnline,
@@ -169,12 +170,35 @@ class SearchService:
                     doctor,
                     specification_id=resolved.specification_id or "",
                 )
+                resolved = self._with_doctor_service(resolved, portal_session)
             yield AvailabilityFlow(
                 portal_session=portal_session,
                 selection=resolved,
                 tax_code=tax_code,
                 locations=locations,
             )
+
+    def _with_doctor_service(
+        self, selection: SearchSelection, portal_session: PortalSession
+    ) -> SearchSelection:
+        """Pin the service the availability request needs for a doctor search.
+
+        A doctor alone is not enough: the portal wants a service as well. When
+        the doctor performs exactly one there is nothing to ask, otherwise only
+        the person searching can choose.
+        """
+        if selection.service_id:
+            return selection
+        offered = portal_session.wizard.doctor_services
+        if not offered:
+            return selection
+        if len(offered) == 1:
+            only = offered[0]
+            return replace(selection, service_id=only.service_id, service_name=only.description)
+        raise DoctorServiceRequired(
+            "the doctor performs more than one service",
+            services=tuple((item.service_id, item.description) for item in offered),
+        )
 
     async def _resolve_selection(
         self, portal_session: PortalSession, selection: SearchSelection, tax_code: str

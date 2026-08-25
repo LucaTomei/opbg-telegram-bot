@@ -96,6 +96,23 @@ class ServiceNotBookableOnline(PortalError):
     code = "SERVICE_NOT_BOOKABLE_ONLINE"
 
 
+class DoctorServiceRequired(PortalError):
+    """The chosen doctor performs more than one service.
+
+    The portal will not quote availability for a doctor alone: it wants the
+    service too, and only the person searching can say which one.
+    """
+
+    code = "DOCTOR_SERVICE_REQUIRED"
+
+    def __init__(
+        self, detail: str = "", services: tuple[tuple[str, str], ...] = (), **context: Any
+    ) -> None:
+        super().__init__(detail, **context)
+        #: ``(service_id, description)`` for each service the doctor performs.
+        self.services = services
+
+
 class SlotNoLongerAvailable(PortalError):
     code = "SLOT_NO_LONGER_AVAILABLE"
 

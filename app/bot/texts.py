@@ -232,6 +232,11 @@ PORTAL_WORKING: Final[str] = (
     "Può richiedere fino a un minuto: il portale è spesso lento e i tentativi "
     "vengono ripetuti in automatico."
 )
+BOOK_DOCTOR_SERVICE_TITLE: Final[str] = (
+    "<b>Prestazione</b>\n"
+    "Il medico <b>{doctor}</b> esegue più prestazioni.\n"
+    "Scegli quale ti serve: il portale non mostra le disponibilità senza."
+)
 BOOK_NO_SLOTS: Final[str] = (
     "Nessuna disponibilità compatibile con i filtri attuali.\n"
     "Puoi modificare i filtri oppure creare un monitoraggio."

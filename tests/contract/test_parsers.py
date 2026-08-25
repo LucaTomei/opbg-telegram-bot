@@ -270,6 +270,23 @@ def test_a_non_empty_availability_field_of_the_wrong_type_is_still_refused() -> 
         parsers.parse_availability({"dates_locations": ["unexpected"]})
 
 
+def test_the_services_a_doctor_performs_are_read_from_the_step() -> None:
+    """Choosing a doctor is not enough: the portal wants a service as well.
+
+    The list lives in a hidden field holding JSON whose quotes the portal does
+    not escape, so it cannot be read through the attribute.
+    """
+    services = parsers.parse_doctor_services(load("appointments_create_doctor_units.html"))
+    assert [(item.service_id, item.description) for item in services] == [
+        ("9001", "VISITA SINTETICA"),
+        ("9002", "VISITA SINTETICA AVANZATA"),
+    ]
+
+
+def test_a_step_without_doctor_units_yields_no_service() -> None:
+    assert parsers.parse_doctor_services(load("appointments_create_locations.html")) == ()
+
+
 def test_location_options_are_read_from_the_radio_group() -> None:
     """The portal renders one radio per location, valued ``location-<id>``.
 

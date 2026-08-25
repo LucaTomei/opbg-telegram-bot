@@ -390,6 +390,33 @@ async def test_a_slow_portal_call_is_announced(
     assert announced, "the wait was never announced"
 
 
+async def test_a_doctor_with_several_services_asks_which_one(
+    bot: BotHarness,
+    linked: tuple[PortalAccount, Patient],
+    member: TelegramUser,
+    bot_portal: FakePortal,
+) -> None:
+    """The portal quotes nothing for a doctor alone, so the bot has to ask.
+
+    Skipping the question sends availability without a service and earns a 400,
+    which reached the user as a technical error.
+    """
+    account, patient = linked
+    bot_portal.doctor_step_fixture = "appointments_create_doctor_units.html"
+    await bot.send(USER_ID, texts.BTN_BOOK)
+    await bot.press(USER_ID, bot.find("Scegli l'account").callback_for(account.label))
+    await bot.press(USER_ID, bot.find("Scegli il paziente").callback_for("Alfa"))
+    type_screen = bot.find("prestazione o uno specifico medico")
+    await bot.press(USER_ID, type_screen.callback_for(texts.BOOK_SEARCH_DOCTOR))
+    await bot.send(USER_ID, "sintetico")
+    await bot.press(USER_ID, bot.find("Risultati per").callback_for("DOTT. SINTETICO UNO"))
+
+    assert bot.contains("esegue più prestazioni")
+    buttons = " ".join(bot.last().buttons())
+    assert "VISITA SINTETICA" in buttons
+    assert "VISITA SINTETICA AVANZATA" in buttons
+
+
 async def test_a_service_without_locations_is_reported_as_not_bookable(
     bot: BotHarness,
     linked: tuple[PortalAccount, Patient],

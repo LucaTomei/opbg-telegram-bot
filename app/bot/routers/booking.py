@@ -50,7 +50,7 @@ from app.domain.enums import (
     SearchType,
     SortStrategy,
 )
-from app.domain.errors import NotFoundError, ValidationError
+from app.domain.errors import DoctorServiceRequired, NotFoundError, ValidationError
 from app.domain.filters import (
     parse_excluded_dates,
     parse_time_windows,
@@ -409,6 +409,7 @@ async def _render_results(
     draft: BookingDraft,
     *,
     page: int,
+    title: str | None = None,
 ) -> None:
     cache = draft.slot_cache if isinstance(draft.slot_cache, dict) else {}
     results = cache.get("results") or []
@@ -425,7 +426,7 @@ async def _render_results(
     ]
     await render(
         event,
-        texts.BOOK_RESULTS_TITLE.format(query=escape(draft.query_text or "")),
+        title or texts.BOOK_RESULTS_TITLE.format(query=escape(draft.query_text or "")),
         build_list(
             entries,
             namespace=NS,
@@ -464,7 +465,11 @@ async def pick_result(
     if not 0 <= index < len(results):
         raise NotFoundError("the selected result is no longer available")
     chosen = results[index]
-    if chosen.get("kind") == "doctor":
+    if chosen.get("kind") == "doctor_service":
+        # Still a doctor search: the service only narrows it down.
+        draft.selected_service_external_id = str(chosen.get("id", ""))
+        draft.selected_service_name = str(chosen.get("name", ""))[:255]
+    elif chosen.get("kind") == "doctor":
         apply_selection_to_draft(
             draft,
             SearchSelection(
@@ -509,12 +514,34 @@ async def _load_locations(
     if patient is None:
         raise NotFoundError("patient not found")
     selection = draft_selection(draft)
-    async with container.search.availability_flow(session, account, patient, selection) as flow:
-        availability = await container.search.fetch_availability(flow)
-        locations = availability.locations or flow.locations
-        draft.available_locations_json = encode_locations(locations)
-        draft.slot_cache = {"slots": encode_slots(availability.slots)}
-        draft.slot_cache_refreshed_at = utc_now()
+    try:
+        async with container.search.availability_flow(session, account, patient, selection) as flow:
+            availability = await container.search.fetch_availability(flow)
+            locations = availability.locations or flow.locations
+            draft.available_locations_json = encode_locations(locations)
+            draft.slot_cache = {"slots": encode_slots(availability.slots)}
+            draft.slot_cache_refreshed_at = utc_now()
+    except DoctorServiceRequired as exc:
+        # The portal quotes nothing for a doctor alone, and only the user can
+        # say which of their services is wanted.
+        draft.slot_cache = {
+            "results": [
+                {"kind": "doctor_service", "id": service_id, "name": description}
+                for service_id, description in exc.services[:MAX_RESULT_CACHE]
+            ]
+        }
+        await _touch(session, container, draft)
+        await _render_results(
+            event,
+            session,
+            user,
+            draft,
+            page=0,
+            title=texts.BOOK_DOCTOR_SERVICE_TITLE.format(
+                doctor=escape(draft.selected_doctor_name or "")
+            ),
+        )
+        return
     await _touch(session, container, draft)
     await _render_locations(event, session, user, draft, page=0)
 

@@ -56,6 +56,9 @@ class FakePortal:
     #: "no slot", or to a different fixture to change the offered proposals.
     availability_fixture: str = "availability.json"
     locations_fixture: str = "appointments_create_locations.html"
+    #: The step a doctor choice leads to; the default has no doctor units, so
+    #: the doctor path behaves like the service one unless a test says otherwise.
+    doctor_step_fixture: str | None = None
     #: Appointment list returned before and after a booking.
     appointments_fixture: str = "appointments_list.html"
     appointments_after_booking: str = "appointments_list_after_booking.html"
@@ -93,6 +96,7 @@ class FakePortal:
             "valid_credentials",
             "availability_fixture",
             "locations_fixture",
+            "doctor_step_fixture",
             "appointments_fixture",
             "appointments_after_booking",
             "appointments_after_cancel",
@@ -213,6 +217,8 @@ class FakePortal:
             return _html(load("appointments_confirm.html"))
         if sent("id_proposal"):
             return _html(load("appointments_confirm.html"))
+        if sent("medico") and self.doctor_step_fixture:
+            return _html(load(self.doctor_step_fixture))
         if sent("service") or sent("medico"):
             return _html(load(self.locations_fixture))
         if sent("tax_code"):

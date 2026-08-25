@@ -617,6 +617,7 @@ class PortalClient:
             csrf_token=self._remember_csrf(session, html),
             patients=session.wizard.patients,
             locations=locations,
+            doctor_services=parsers.parse_doctor_services(html),
             selected_tax_code=session.wizard.selected_tax_code,
             session_fields=parsers.parse_session_service_fields(html),
             stage="SEARCH_SUBMITTED",

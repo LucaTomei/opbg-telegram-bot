@@ -14,6 +14,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from datetime import date, datetime, time
 from typing import Any, Final
 
+import orjson
 from selectolax.parser import HTMLParser, Node
 
 from app.domain.entities import (
@@ -854,6 +855,51 @@ def parse_form_fields(html: str, *, form_id: str = "appointment-form") -> dict[s
             continue
         fields[name] = normalize_text(element.attributes.get("value") or "")
     return fields
+
+
+#: ``#unitaEroganti`` holds unescaped JSON, so it is read from the source.
+_DOCTOR_UNITS_RE: Final[re.Pattern[str]] = re.compile(
+    r'id="unitaEroganti"\s+value="(.*?)"\s*/?>', re.DOTALL
+)
+
+
+def parse_doctor_services(html: str) -> tuple[PortalService, ...]:
+    """Read the services a chosen doctor offers, from ``#unitaEroganti``.
+
+    Picking a doctor is not enough to ask for availability: the portal wants a
+    service too, and the step lists the ones that doctor performs in each of
+    their locations. The field holds JSON, so a shape it does not have is a
+    contract change rather than an empty result.
+    """
+    # The portal writes the JSON straight into the attribute without escaping
+    # its quotes, so an HTML parser truncates the value at the first one. The
+    # source has to be read directly.
+    match = _DOCTOR_UNITS_RE.search(html)
+    if match is None:
+        return ()
+    raw = match.group(1).strip()
+    if not raw or raw == "[]":
+        return ()
+    try:
+        units = orjson.loads(raw)
+    except orjson.JSONDecodeError as exc:
+        raise PortalContractChanged("the doctor units field is not valid JSON") from exc
+    if not isinstance(units, Sequence) or isinstance(units, str | bytes):
+        raise PortalContractChanged("the doctor units field is not a list")
+
+    services: dict[str, str] = {}
+    for unit in units:
+        if not isinstance(unit, Mapping):
+            continue
+        offered = unit.get("prestazioni")
+        if not isinstance(offered, Mapping):
+            continue
+        for identifier, description in offered.items():
+            services.setdefault(str(identifier), normalize_text(str(description)))
+    return tuple(
+        PortalService(service_id=identifier, description=description, online_bookable=True)
+        for identifier, description in sorted(services.items(), key=lambda item: item[1])
+    )
 
 
 def parse_session_service_fields(html: str) -> dict[str, str]:

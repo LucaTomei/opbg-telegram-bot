@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from app.domain.entities import PortalLocation, PortalPatient
+from app.domain.entities import PortalLocation, PortalPatient, PortalService
 
 
 @dataclass(frozen=True, slots=True)
@@ -29,6 +29,8 @@ class WizardState:
     csrf_token: str = ""
     patients: tuple[PortalPatient, ...] = ()
     locations: tuple[PortalLocation, ...] = ()
+    #: Services the chosen doctor performs; empty outside the doctor path.
+    doctor_services: tuple[PortalService, ...] = ()
     session_fields: dict[str, str] = field(default_factory=dict)
     selected_tax_code: str | None = None
     stage: str = "INITIAL"
