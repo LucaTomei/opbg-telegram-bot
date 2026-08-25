@@ -183,7 +183,21 @@ jobs:
         # Plain docker build, not buildx: the runner is self-hosted, so the
         # daemon's own layer cache survives between runs, while a fresh buildx
         # builder would start cold every time.
-        run: docker build --tag opbg-telegram-bot:ci .
+        #
+        # Retried because the base image comes from Docker Hub, which regularly
+        # answers 500 while issuing the anonymous pull token. That is not a
+        # fault of this repository and must not fail the run.
+        run: |
+          set -uo pipefail
+          for attempt in 1 2 3; do
+            if docker build --tag opbg-telegram-bot:ci .; then
+              exit 0
+            fi
+            echo "build attempt ${attempt} failed"
+            [ "${attempt}" = "3" ] && break
+            sleep $((attempt * 20))
+          done
+          exit 1
       - name: Compose configuration
         env:
           APP_SECRET_KEY: ${{ secrets.CI_PLACEHOLDER_KEY || 'Q0lfT05MWV9EVU1NWV9LRVlfRk9SX0NPTkZJR19WQUxJRA' }}
