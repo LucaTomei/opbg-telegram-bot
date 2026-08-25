@@ -66,9 +66,28 @@ def format_local_datetime(value: datetime | None) -> str:
 
 
 def format_slot_button(slot: PortalSlot) -> str:
+    """Label one slot: when, where and what it costs.
+
+    The price belongs on the button. Reading it only in the detail above means
+    comparing proposals by scrolling, and it is what people decide on.
+    """
     local = slot.starts_at_local
-    abbreviation = abbreviate_location(slot.location_name)
-    return f"{local.strftime('%d/%m %H:%M')} · {abbreviation}"
+    parts = [local.strftime("%d/%m %H:%M")]
+    price = format_price(slot.cost)
+    if price:
+        parts.append(price)
+    parts.append(abbreviate_location(slot.location_name, limit=14 if price else 18))
+    return " · ".join(parts)
+
+
+def format_price(cost: str | None) -> str:
+    """Render a portal cost compactly, adding the currency it omits."""
+    cleaned = " ".join((cost or "").split())
+    if not cleaned:
+        return ""
+    if any(symbol in cleaned for symbol in ("€", "EUR", "eur")):
+        return cleaned
+    return f"{cleaned} €"
 
 
 def abbreviate_location(name: str, limit: int = 18) -> str:
