@@ -24,6 +24,16 @@ async def acknowledge(event: TelegramObject, text: str | None = None) -> None:
         await event.answer(text[:200] if text else None)
 
 
+async def notify_working(event: TelegramObject, text: str = texts.PORTAL_WORKING) -> None:
+    """Say that a slow portal call is under way.
+
+    Reading availability walks the whole wizard and retries a portal that fails
+    often, which can take a minute. Without this the chat stays silent and the
+    user cannot tell waiting from broken. The result replaces this message.
+    """
+    await render(event, text)
+
+
 async def render(
     event: TelegramObject,
     text: str,

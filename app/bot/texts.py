@@ -227,6 +227,11 @@ BTN_FILTER_EXCLUDED: Final[str] = "🚫 Date escluse"
 BTN_FILTER_SORT: Final[str] = "↕️ Ordinamento"
 BTN_FILTER_LEAD: Final[str] = "⏱ Anticipo minimo"
 BTN_SHOW_AVAILABILITY: Final[str] = "✅ Mostra disponibilità"
+PORTAL_WORKING: Final[str] = (
+    "⏳ Sto interrogando il portale…\n\n"
+    "Può richiedere fino a un minuto: il portale è spesso lento e i tentativi "
+    "vengono ripetuti in automatico."
+)
 BOOK_NO_SLOTS: Final[str] = (
     "Nessuna disponibilità compatibile con i filtri attuali.\n"
     "Puoi modificare i filtri oppure creare un monitoraggio."

@@ -25,7 +25,14 @@ from app.bot.presenters.formatting import (
     format_time_windows,
     format_weekdays,
 )
-from app.bot.routers.common import acknowledge, page_size, render, send_new, slot_limit
+from app.bot.routers.common import (
+    acknowledge,
+    notify_working,
+    page_size,
+    render,
+    send_new,
+    slot_limit,
+)
 from app.composition import Container
 from app.db.models.conversations import BookingDraft
 from app.db.models.users import TelegramUser
@@ -354,6 +361,7 @@ async def run_search(
 
     query_text = (message.text or "").strip()
     draft.query_text = query_text[:160]
+    await notify_working(message)
     if draft.search_type is SearchType.DOCTOR:
         doctors = await container.search.search_doctors(session, account, patient, query=query_text)
         cache = [
@@ -481,6 +489,7 @@ async def pick_result(
         )
     draft.slot_cache = None
     await _touch(session, container, draft)
+    await notify_working(query)
     await _load_locations(query, session, container, user, draft)
 
 
@@ -1173,6 +1182,7 @@ async def show_slots(
     draft = await _require_draft(session, user, data.uuid_arg(1))
     refresh = data.arg(2) == "r"
     if refresh or draft.slot_cache_refreshed_at is None:
+        await notify_working(query)
         await _refresh_slots(session, container, user, draft)
         page = 0
     else:

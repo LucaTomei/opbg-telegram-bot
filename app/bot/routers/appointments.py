@@ -11,7 +11,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.bot import callbacks, texts
 from app.bot.keyboards.inline import Entry, build_actions, build_list
 from app.bot.presenters.formatting import format_appointment_card, format_local_datetime
-from app.bot.routers.common import acknowledge, page_size, render, send_new
+from app.bot.routers.common import (
+    acknowledge,
+    notify_working,
+    page_size,
+    render,
+    send_new,
+)
 from app.composition import Container
 from app.db.models.bookings import AppointmentCache
 from app.db.models.users import TelegramUser
@@ -119,6 +125,7 @@ async def sync_appointments(
 ) -> None:
     """Refresh every active account of the user from the portal."""
     await acknowledge(query)
+    await notify_working(query)
     accounts = await PortalAccountRepository(session).list_for_user(user.id, include_disabled=False)
     created = updated = cancelled = 0
     for account in accounts:

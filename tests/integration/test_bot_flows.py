@@ -345,6 +345,51 @@ async def test_no_availability_offers_a_monitor(
     assert texts.BTN_CREATE_WATCH in " ".join(bot.last().buttons())
 
 
+async def test_an_error_reaches_the_user_even_when_the_callback_expired(
+    bot: BotHarness,
+    linked: tuple[PortalAccount, Patient],
+    member: TelegramUser,
+    bot_portal: FakePortal,
+) -> None:
+    """A failed acknowledgement must not swallow the explanation.
+
+    Handlers answer the callback as soon as they start, so the error boundary's
+    own answer is a second one and Telegram refuses it. A slow portal call also
+    outlives the query. Either way the user must still be told what happened.
+    """
+    account, patient = linked
+    service_button = await start_booking(bot, account, patient)
+    await bot.press(USER_ID, service_button)
+    await bot.send(USER_ID, "visita")
+    result = bot.find("Risultati per").callback_for("VISITA SINTETICA")
+
+    # Only now: the portal breaks and the acknowledgement is refused, exactly
+    # as it is once a slow call has outlived the query.
+    bot_portal.forced_status = 500
+    bot.session.callback_answer_fails = True
+    bot.sent.clear()
+    await bot.press(USER_ID, result)
+
+    texts_sent = " ".join(bot.texts())
+    assert texts_sent.strip(), "the user was left with no message at all"
+    assert "Codice di riferimento" in texts_sent or "portale" in texts_sent
+
+
+async def test_a_slow_portal_call_is_announced(
+    bot: BotHarness,
+    linked: tuple[PortalAccount, Patient],
+    member: TelegramUser,
+) -> None:
+    """Reading availability takes a while; silence reads as a broken bot."""
+    account, patient = linked
+    service_button = await start_booking(bot, account, patient)
+    await bot.press(USER_ID, service_button)
+    await bot.send(USER_ID, "visita")
+
+    announced = [call for call in bot.sent if "Sto interrogando il portale" in call.text]
+    assert announced, "the wait was never announced"
+
+
 async def test_a_service_without_locations_is_reported_as_not_bookable(
     bot: BotHarness,
     linked: tuple[PortalAccount, Patient],

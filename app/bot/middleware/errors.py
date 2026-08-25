@@ -73,8 +73,21 @@ class ErrorBoundaryMiddleware(BaseMiddleware):
 
 
 async def _notify(event: TelegramObject, text: str) -> None:
+    """Deliver the message to the user, whatever else has already happened.
+
+    Answering a callback twice is refused by Telegram, and so is answering one
+    that expired while a slow portal call was in flight. Either way the
+    acknowledgement is a courtesy and the explanation is the point, so a failed
+    answer must never keep the user in the dark.
+    """
     if isinstance(event, CallbackQuery):
-        await event.answer()
+        try:
+            await event.answer()
+        except TelegramBadRequest:
+            logger.debug(
+                "the callback could not be acknowledged again",
+                extra={"event_code": "CALLBACK_ALREADY_ANSWERED"},
+            )
         if event.message is not None and isinstance(event.message, Message):
             await event.message.answer(text)
         return

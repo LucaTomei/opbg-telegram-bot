@@ -78,6 +78,9 @@ class FakeSession(BaseSession):
         #: Set to True to make every delete_message call fail, as it does when
         #: the message is older than the window Telegram allows.
         self.deletion_fails = False
+        #: Set to True to refuse a second answer to the same callback, as
+        #: Telegram does once one has been sent or the query has expired.
+        self.callback_answer_fails = False
         self._message_ids = itertools.count(1000)
 
     async def close(self) -> None:
@@ -105,6 +108,8 @@ class FakeSession(BaseSession):
         text = str(payload.get("text") or payload.get("caption") or "")
         self.calls.append(SentMessage(method=name, text=text, keyboard=markup, payload=payload))
 
+        if name == "AnswerCallbackQuery" and self.callback_answer_fails:
+            raise TelegramBadRequest(method=method, message="query is too old")
         if name == "DeleteMessage":
             if self.deletion_fails:
                 raise TelegramBadRequest(method=method, message="message can't be deleted")
@@ -150,8 +155,11 @@ class BotHarness:
         )
 
     def reset(self) -> None:
+        """Forget the recorded calls and restore the default behaviour."""
         self.session.calls.clear()
         self.session.deleted.clear()
+        self.session.deletion_fails = False
+        self.session.callback_answer_fails = False
 
     @property
     def deleted(self) -> list[int]:

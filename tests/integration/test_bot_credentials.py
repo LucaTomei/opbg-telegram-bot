@@ -101,8 +101,8 @@ async def test_a_failed_deletion_is_reported_to_the_user(
     await bot.press(USER_ID, CONNECT)
     await bot.send(USER_ID, "Account principale")
     await bot.send(USER_ID, VALID_EMAIL)
-    bot.session.deletion_fails = True
     bot.reset()
+    bot.session.deletion_fails = True
     try:
         await bot.send(USER_ID, VALID_PASSWORD)
     finally:
