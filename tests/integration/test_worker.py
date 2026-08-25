@@ -20,6 +20,7 @@ from app.domain.enums import (
     NotificationEventType,
     NotificationStatus,
     PortalAccountStatus,
+    SearchType,
     UserStatus,
     WatchMode,
     WatchStatus,
@@ -157,6 +158,39 @@ async def test_autobook_books_the_best_slot_and_completes_the_monitor(
         user.id, page=0, page_size=10
     )
     assert events.items[0].event_type is NotificationEventType.AUTOBOOK_SUCCESS
+
+
+async def test_a_doctor_monitor_books_automatically(
+    clean_session: AsyncSession,
+    container: Container,
+    user: TelegramUser,
+    portal: FakePortal,
+) -> None:
+    """A monitor on a doctor must carry the service the portal also needs.
+
+    Watching a doctor is the answer to "the dates I want are not open yet", so
+    the monitor has to survive without the person: it keeps both the doctor and
+    the service chosen for them, and books unattended.
+    """
+    account = await make_account(clean_session, user)
+    patient = await make_patient(clean_session, account)
+    watch = await make_watch(clean_session, user, account, patient=patient, mode=WatchMode.AUTOBOOK)
+    watch.search_type = SearchType.DOCTOR
+    watch.query_text = "sintetico"
+    watch.selected_doctor_external_id = "SINTETICO_UNO"
+    watch.selected_doctor_name = "DOTT. SINTETICO UNO"
+    await WatchRepository(clean_session).flush()
+
+    portal.doctor_step_fixture = "appointments_create_doctor_units.html"
+    portal.appointments_fixture = "appointments_list_empty.html"
+    # A filter bound to one doctor leaves a different slot than the service
+    # path picks, so the list has to hold that appointment.
+    portal.appointments_after_booking = "appointments_list_after_doctor_booking.html"
+
+    outcome = await build_processor(container).run(clean_session, watch, worker_id=WORKER_ID)
+
+    assert outcome.booked is True, "the monitor did not book for the doctor"
+    assert portal.confirmations == 1
 
 
 async def test_autobook_never_books_a_slot_outside_the_filters(

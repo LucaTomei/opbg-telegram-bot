@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="it">
+<head><meta charset="utf-8"><meta name="csrf-token" content="SYNTHETIC-META-CSRF-0013"></head>
+<body>
+  <a href="/logout">Esci</a>
+  <!--
+    The list as it looks once a doctor monitor has booked: it holds the
+    appointment for the slot that survives a filter constrained to one doctor,
+    16/09/2026 at 15:00, so the reconciliation has something to recognise.
+  -->
+  <div id="appointments-list">
+    <div class="appointment pending" data-appointment-id="70003">
+      <div class="appointment-info">
+        <span class="appointment-info__label">Prestazione</span>
+        <span class="appointment-info__text">VISITA SINTETICA</span>
+        <span class="appointment-info__label">Data</span>
+        <span class="appointment-info__text">16/09/2026</span>
+        <span class="appointment-info__label">Ora</span>
+        <span class="appointment-info__text">15:00</span>
+        <span class="appointment-info__label">Medico</span>
+        <span class="appointment-info__text">DOTT. SINTETICO UNO</span>
+        <span class="appointment-info__label">Paziente</span>
+        <span class="appointment-info__text">Alfa Beta</span>
+        <span class="appointment-info__label">Sede</span>
+        <span class="appointment-info__text">Sede Beta</span>
+        <span class="appointment-info__label">Pagamento</span>
+        <span class="appointment-info__text">Da saldare allo sportello</span>
+      </div>
+      <a class="btn-appointment-list--cancel" data-href="/appointments/70003/cancel">Disdici</a>
+      <a href="/appointments/70003/pdf-download">Promemoria</a>
+    </div>
+  </div>
+</body>
+</html>
