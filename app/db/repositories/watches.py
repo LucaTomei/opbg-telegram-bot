@@ -232,6 +232,29 @@ class WatchRepository(BaseRepository[BookingWatch]):
         await self.flush()
         return suspended
 
+    async def resume_for_account(self, account_id: uuid.UUID, *, reason: str) -> list[BookingWatch]:
+        """Reactivate the monitors one specific reason had paused.
+
+        A monitor paused for another reason — the user did it, the account was
+        disabled — stays paused: only what this reason stopped is restarted.
+        """
+        statement = select(BookingWatch).where(
+            BookingWatch.portal_account_id == account_id,
+            BookingWatch.status == WatchStatus.PAUSED,
+            BookingWatch.completed_reason == reason[:64],
+            BookingWatch.deleted_at.is_(None),
+        )
+        now = utc_now()
+        resumed: list[BookingWatch] = []
+        for watch in await self.session.scalars(statement):
+            watch.status = WatchStatus.ACTIVE
+            watch.completed_reason = None
+            watch.consecutive_errors = 0
+            watch.next_check_at = now
+            resumed.append(watch)
+        await self.flush()
+        return resumed
+
     async def suspend_for_account(
         self, account_id: uuid.UUID, *, reason: str
     ) -> list[BookingWatch]:

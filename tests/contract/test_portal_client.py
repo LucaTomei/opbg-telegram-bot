@@ -208,6 +208,70 @@ async def test_login_failure_raises_authentication_failed(settings: Settings) ->
             )
 
 
+def _login_then(verification: Callable[[], httpx.Response]) -> Any:
+    """A portal that accepts the credentials, then answers the check somehow."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/login" and request.method == "GET":
+            return html(load("login_form.html"))
+        if request.url.path == "/login":
+            # 200 and no redirect, so the verification that follows is a
+            # request of its own rather than the tail of this one.
+            return html("<html><body>accesso eseguito</body></html>")
+        if request.url.path == "/appointments":
+            return verification()
+        return httpx.Response(404)
+
+    return handler
+
+
+async def test_a_portal_outage_during_the_check_is_not_a_wrong_password(
+    settings: Settings,
+) -> None:
+    """A login is only refused when the portal says so.
+
+    The caller answers a failed login by suspending the account and asking a
+    human for fresh credentials, so reporting a passing outage that way costs a
+    working account its stored login for nothing.
+    """
+    client = build_client(settings, _login_then(lambda: httpx.Response(503, text="down")))
+    async with client.session(account_key="a") as portal_session:
+        with pytest.raises(PortalUnavailable):
+            await client.login(
+                portal_session, PortalCredentials(SYNTHETIC_EMAIL, SYNTHETIC_PASSWORD)
+            )
+
+
+async def test_throttling_during_the_check_is_not_a_wrong_password(
+    settings: Settings,
+) -> None:
+    client = build_client(settings, _login_then(lambda: httpx.Response(429, text="slow down")))
+    async with client.session(account_key="a") as portal_session:
+        with pytest.raises(PortalRateLimited):
+            await client.login(
+                portal_session, PortalCredentials(SYNTHETIC_EMAIL, SYNTHETIC_PASSWORD)
+            )
+
+
+async def test_a_session_the_portal_refuses_after_a_login_is_a_wrong_password(
+    settings: Settings,
+) -> None:
+    """A 401 on the brand new session means the credentials did not take."""
+    client = build_client(settings, _login_then(lambda: httpx.Response(401, text="no")))
+    async with client.session(account_key="a") as portal_session:
+        with pytest.raises(AuthenticationFailed):
+            await client.login(
+                portal_session, PortalCredentials(SYNTHETIC_EMAIL, SYNTHETIC_PASSWORD)
+            )
+
+
+async def test_the_stored_session_check_still_answers_a_plain_no(settings: Settings) -> None:
+    """Deciding whether to reuse a stored jar must never raise."""
+    client = build_client(settings, _login_then(lambda: httpx.Response(503, text="down")))
+    async with client.session(account_key="a") as portal_session:
+        assert await client.verify_session(portal_session) is False
+
+
 async def test_captcha_challenge_stops_the_flow(settings: Settings) -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/login" and request.method == "GET":

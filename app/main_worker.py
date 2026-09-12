@@ -22,6 +22,7 @@ from app.version import APP_VERSION
 from app.worker.leases import default_worker_id
 from app.worker.scheduler import WorkerScheduler
 from app.worker.tasks import (
+    AccountRecoveryTask,
     AppointmentSyncTask,
     CleanupTask,
     ReconciliationTask,
@@ -52,6 +53,9 @@ async def run() -> None:
         notifications=container.notifications,
         sender=TelegramNotificationSender(bot),
         renderer=render_for_queue,
+        account_recovery=AccountRecoveryTask(
+            container.settings, container.sessions, container.notifications
+        ),
         worker_id=container.settings.worker_id or default_worker_id(),
     )
 

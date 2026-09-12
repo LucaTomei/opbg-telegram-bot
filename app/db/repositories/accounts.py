@@ -166,6 +166,34 @@ class PortalAccountRepository(BaseRepository[PortalAccount]):
             statement = statement.where(PortalAccount.telegram_user_id == user_id)
         return await self.paginate(statement, page=page, page_size=page_size)
 
+    async def list_awaiting_recovery(
+        self, *, older_than: datetime, limit: int
+    ) -> list[PortalAccount]:
+        """Accounts the portal refused that may be worth trying again.
+
+        Only ``REAUTH_REQUIRED``: a ``LOCKED`` account has already spent every
+        automatic attempt, and retrying its password further risks locking the
+        real portal account. Credentials must still be stored — without them
+        only a human can help.
+        """
+        statement = (
+            select(PortalAccount)
+            .where(
+                PortalAccount.status == PortalAccountStatus.REAUTH_REQUIRED,
+                PortalAccount.deleted_at.is_(None),
+                PortalAccount.password_ciphertext.isnot(None),
+                (PortalAccount.last_error_at.is_(None))
+                | (PortalAccount.last_error_at < older_than),
+            )
+            .order_by(
+                PortalAccount.last_error_at.is_(None).desc(),
+                PortalAccount.last_error_at.asc(),
+            )
+            .limit(limit)
+        )
+        result = await self.session.scalars(statement)
+        return list(result)
+
     async def list_needing_sync(self, *, older_than: datetime, limit: int) -> list[PortalAccount]:
         statement = (
             select(PortalAccount)

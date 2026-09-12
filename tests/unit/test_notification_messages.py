@@ -81,3 +81,32 @@ def test_a_payload_queued_before_the_account_details_still_renders() -> None:
     text, _ = render_notification(event, build_user())
     assert "Accesso al portale perso" in text
     assert " · " not in text.splitlines()[0]
+
+
+def test_a_recovered_account_says_no_action_is_needed() -> None:
+    event = build_event(
+        NotificationEventType.ACCOUNT_RECOVERED,
+        {"account_id": "d" * 32, "account_label": "Account principale", "resumed": 2},
+    )
+    text, _ = render_notification(event, build_user())
+    assert "Account principale" in text
+    assert "non devi fare nulla" in text
+    assert "i 2 monitoraggi" in text
+
+
+def test_a_recovery_with_nothing_paused_does_not_invent_monitors() -> None:
+    event = build_event(
+        NotificationEventType.ACCOUNT_RECOVERED,
+        {"account_id": "e" * 32, "account_label": "Secondo", "resumed": 0},
+    )
+    text, _ = render_notification(event, build_user())
+    assert "Nessun monitoraggio era in pausa." in text
+
+
+def test_a_single_resumed_monitor_reads_as_one() -> None:
+    event = build_event(
+        NotificationEventType.ACCOUNT_RECOVERED,
+        {"account_id": "f" * 32, "account_label": "Terzo", "resumed": 1},
+    )
+    text, _ = render_notification(event, build_user())
+    assert "il monitoraggio che era in pausa" in text

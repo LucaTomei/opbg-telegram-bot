@@ -137,6 +137,14 @@ class Settings(BaseSettings):
     max_active_monitors_per_account: Annotated[int, Field(ge=1, le=200)] = 20
     appointment_sync_interval_seconds: Annotated[int, Field(ge=300, le=86_400)] = 3_600
 
+    # --- Account recovery ------------------------------------------------
+    #: An account the portal refused retries its stored credentials on its own.
+    #: It is not a password loop: the attempts are spaced out, and a refusal
+    #: still counts towards the lockout that hands the account to a human.
+    account_recovery_enabled: bool = True
+    account_recovery_delay_seconds: Annotated[int, Field(ge=60, le=86_400)] = 900
+    account_recovery_batch_size: Annotated[int, Field(ge=1, le=50)] = 5
+
     # --- Circuit breaker -------------------------------------------------
     breaker_account_failure_threshold: Annotated[int, Field(ge=1, le=50)] = 5
     breaker_account_cooldown_seconds: Annotated[int, Field(ge=30, le=86_400)] = 900

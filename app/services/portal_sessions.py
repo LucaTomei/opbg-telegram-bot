@@ -24,6 +24,7 @@ from app.domain.enums import BreakerScope, NotificationEventType, PortalAccountS
 from app.domain.errors import (
     AccountSuspendedError,
     AuthenticationFailed,
+    CircuitOpenError,
     PortalCaptchaRequired,
     PortalContractChanged,
     PortalError,
@@ -203,6 +204,58 @@ class PortalSessionManager:
             },
             portal_account_id=account.id,
         )
+
+    async def try_recover(self, session: AsyncSession, account: PortalAccount) -> bool:
+        """Log in again with the stored credentials, with no human involved.
+
+        A fresh login is the only way to tell a password that really changed
+        from a portal that was briefly answering nonsense. Nothing here loops:
+        the caller spaces the attempts out, and each genuine refusal spends one
+        of the few an account gets before it is locked and a human is asked.
+
+        A portal that is unreachable, throttling or behind an open breaker
+        spends nothing — it is not evidence about the credentials.
+        """
+        if account.deleted_at is not None:
+            return False
+        if account.status is not PortalAccountStatus.REAUTH_REQUIRED:
+            return False
+        accounts = PortalAccountRepository(session)
+        subject = account.id.hex
+        try:
+            await self._breaker.ensure_closed(session, scope=BreakerScope.GLOBAL)
+            await self._breaker.ensure_closed(session, scope=BreakerScope.ACCOUNT, subject=subject)
+        except CircuitOpenError:
+            return False
+
+        async with self._client.session(account_key=subject) as portal_session:
+            try:
+                await self._login(accounts, account, portal_session)
+            except (AuthenticationFailed, ReauthenticationRequired) as exc:
+                await self._handle_auth_failure(session, accounts, account, exc)
+                return False
+            except PortalCaptchaRequired as exc:
+                # A challenge is a request for a human by design, and this
+                # product does not answer one. Stop trying.
+                await accounts.mark_auth_failure(account, error_code=exc.code, max_failures=1)
+                await self._notify_login_lost(session, account, error_code=exc.code)
+                return False
+            except PortalError as exc:
+                await accounts.mark_error(account, error_code=exc.code)
+                logger.info(
+                    "the portal could not be reached while recovering an account",
+                    extra={
+                        "event_code": "ACCOUNT_RECOVERY_DEFERRED",
+                        "account_id": account.id.hex,
+                        "error_code": exc.code,
+                    },
+                )
+                return False
+        logger.info(
+            "the stored credentials work again",
+            extra={"event_code": "ACCOUNT_RECOVERED", "account_id": account.id.hex},
+        )
+        return True
 
     async def _persist_cookies(
         self,

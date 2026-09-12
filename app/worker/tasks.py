@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
+from app.db.models.accounts import PortalAccount
 from app.db.models.watches import BookingWatch
 from app.db.repositories.accounts import (
     ConnectRateLimitRepository,
@@ -60,10 +61,11 @@ from app.domain.errors import (
 from app.domain.filters import next_check_at
 from app.domain.fingerprint import search_key, slot_fingerprint
 from app.logging import correlation_scope, get_logger
+from app.services.accounts import REASON_REAUTH_REQUIRED
 from app.services.bookings import BookingRequest, BookingService
 from app.services.mapping import watch_filter, watch_selection
 from app.services.notifications import NotificationService
-from app.services.portal_sessions import reauth_subject
+from app.services.portal_sessions import PortalSessionManager, reauth_subject
 from app.services.search import SearchService
 
 logger = get_logger(__name__)
@@ -480,7 +482,7 @@ class WatchProcessor:
         self, session: AsyncSession, watch: BookingWatch, *, error_code: str
     ) -> None:
         watches = WatchRepository(session)
-        await watches.set_status(watch, WatchStatus.PAUSED, reason="REAUTH_REQUIRED")
+        await watches.set_status(watch, WatchStatus.PAUSED, reason=REASON_REAUTH_REQUIRED)
         users = UserRepository(session)
         user = await users.get(watch.telegram_user_id)
         if user is None:
@@ -543,6 +545,86 @@ class WatchProcessor:
             subject=f"{watch.id.hex}:suspended",
             payload={"watch_id": watch.id.hex, "watch_name": watch.name, "reason": reason},
             watch_id=watch.id,
+        )
+
+
+class AccountRecoveryTask:
+    """Brings a refused account back without asking the user for anything.
+
+    An account only reaches this task after the portal refused a fresh login,
+    so the retry is deliberately unhurried and bounded: the query only offers
+    accounts whose last failure is older than the configured delay, and every
+    genuine refusal counts towards the lockout that does hand the account to a
+    human. A password the user really changed cannot be guessed here, and a
+    CAPTCHA is a request for a person by design.
+    """
+
+    def __init__(
+        self,
+        settings: Settings,
+        sessions: PortalSessionManager,
+        notifications: NotificationService | None = None,
+    ) -> None:
+        self._settings = settings
+        self._sessions = sessions
+        self._notifications = notifications
+
+    async def run(
+        self, session: AsyncSession, *, now: datetime | None = None, limit: int | None = None
+    ) -> int:
+        """Try the stored credentials of every account that is due, and report."""
+        if not self._settings.account_recovery_enabled:
+            return 0
+        moment = now or utc_now()
+        accounts = PortalAccountRepository(session)
+        due = await accounts.list_awaiting_recovery(
+            older_than=moment - timedelta(seconds=self._settings.account_recovery_delay_seconds),
+            limit=limit or self._settings.account_recovery_batch_size,
+        )
+        recovered = 0
+        for account in due:
+            try:
+                if not await self._sessions.try_recover(session, account):
+                    continue
+                resumed = await WatchRepository(session).resume_for_account(
+                    account.id, reason=REASON_REAUTH_REQUIRED
+                )
+            except DomainError as exc:
+                # One account's surprise must not discard the whole batch.
+                logger.warning(
+                    "account recovery failed",
+                    extra={
+                        "event_code": "ACCOUNT_RECOVERY_FAILED",
+                        "account_id": account.id.hex,
+                        "error_code": exc.code,
+                    },
+                )
+                continue
+            await self._notify_recovered(session, account, resumed=len(resumed), now=moment)
+            recovered += 1
+        return recovered
+
+    async def _notify_recovered(
+        self, session: AsyncSession, account: PortalAccount, *, resumed: int, now: datetime
+    ) -> None:
+        """Close the loop on the message that reported the account as lost."""
+        if self._notifications is None:
+            return
+        user = await UserRepository(session).get(account.telegram_user_id)
+        if user is None:
+            return
+        await self._notifications.queue(
+            session,
+            user=user,
+            event_type=NotificationEventType.ACCOUNT_RECOVERED,
+            subject=reauth_subject(account),
+            payload={
+                "account_id": account.id.hex,
+                "account_label": account.label,
+                "resumed": resumed,
+            },
+            portal_account_id=account.id,
+            now=now,
         )
 
 

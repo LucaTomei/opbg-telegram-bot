@@ -28,7 +28,6 @@ from app.domain.entities import CookieJar
 from app.domain.enums import (
     NotificationEventType,
     PortalAccountStatus,
-    WatchStatus,
 )
 from app.domain.errors import (
     AuthenticationFailed,
@@ -55,6 +54,10 @@ MAX_PASSWORD_LENGTH = 255
 #: Rate-limit scopes protecting the credential steps of the conversation.
 SCOPE_ATTEMPT = "attempt"
 SCOPE_FAILURE = "failure"
+
+#: Why a monitor was paused, and therefore what may resume it.
+REASON_REAUTH_REQUIRED = "REAUTH_REQUIRED"
+REASON_ACCOUNT_DISABLED = "ACCOUNT_DISABLED"
 
 
 @dataclass(frozen=True, slots=True)
@@ -240,23 +243,22 @@ class AccountService:
             await self._register_failure(session, user)
             raise
 
-    async def _resume_watches(self, session: AsyncSession, account: PortalAccount) -> int:
-        """Reactivate the monitors paused by a previous authentication failure."""
+    async def _resume_watches(
+        self,
+        session: AsyncSession,
+        account: PortalAccount,
+        *,
+        reasons: tuple[str, ...] = (REASON_REAUTH_REQUIRED,),
+    ) -> int:
+        """Reactivate the monitors those reasons had paused.
+
+        A monitor the user paused themselves is left alone: only what the
+        account's own trouble stopped is restarted.
+        """
         watches = WatchRepository(session)
-        page = await watches.list_all(
-            page=0, page_size=500, account_id=account.id, status=WatchStatus.PAUSED
-        )
         resumed = 0
-        now = utc_now()
-        for watch in page.items:
-            if watch.completed_reason != "REAUTH_REQUIRED":
-                continue
-            watch.status = WatchStatus.ACTIVE
-            watch.completed_reason = None
-            watch.consecutive_errors = 0
-            watch.next_check_at = now
-            resumed += 1
-        await watches.flush()
+        for reason in reasons:
+            resumed += len(await watches.resume_for_account(account.id, reason=reason))
         return resumed
 
     # --- management ------------------------------------------------------
@@ -281,10 +283,14 @@ class AccountService:
         accounts = PortalAccountRepository(session)
         if enabled:
             await accounts.set_status(account, PortalAccountStatus.ACTIVE)
-            return await self._resume_watches(session, account)
+            # Re-enabling has to undo what disabling did, or the monitors stay
+            # paused until the user reopens each one of them by hand.
+            return await self._resume_watches(
+                session, account, reasons=(REASON_ACCOUNT_DISABLED, REASON_REAUTH_REQUIRED)
+            )
         await accounts.set_status(account, PortalAccountStatus.DISABLED)
         suspended = await WatchRepository(session).suspend_for_account(
-            account.id, reason="ACCOUNT_DISABLED"
+            account.id, reason=REASON_ACCOUNT_DISABLED
         )
         return len(suspended)
 

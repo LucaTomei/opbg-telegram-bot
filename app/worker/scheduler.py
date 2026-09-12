@@ -23,6 +23,7 @@ from app.services.notifications import NotificationService, TelegramSender
 from app.worker.heartbeat import HeartbeatPublisher
 from app.worker.leases import default_worker_id
 from app.worker.tasks import (
+    AccountRecoveryTask,
     AppointmentSyncTask,
     CleanupTask,
     ReconciliationTask,
@@ -34,6 +35,9 @@ logger = get_logger(__name__)
 CLEANUP_INTERVAL_SECONDS = 900
 RECONCILE_INTERVAL_SECONDS = 120
 NOTIFICATION_INTERVAL_SECONDS = 5
+# How often refused accounts are looked at. How long one of them actually
+# waits between two attempts is ACCOUNT_RECOVERY_DELAY_SECONDS, not this.
+ACCOUNT_RECOVERY_INTERVAL_SECONDS = 300
 
 
 @dataclass(slots=True)
@@ -58,6 +62,7 @@ class WorkerScheduler:
     notifications: NotificationService
     sender: TelegramSender | None
     renderer: Callable[..., Awaitable[tuple[str, object]]] | None = None
+    account_recovery: AccountRecoveryTask | None = None
     worker_id: str = field(default_factory=default_worker_id)
     started_at: datetime = field(default_factory=utc_now)
     _stopping: asyncio.Event = field(default_factory=asyncio.Event, init=False)
@@ -86,6 +91,11 @@ class WorkerScheduler:
             LoopSpec("reconcile", RECONCILE_INTERVAL_SECONDS, self._run_reconcile),
             LoopSpec("cleanup", CLEANUP_INTERVAL_SECONDS, self._run_cleanup),
             LoopSpec("notifications", NOTIFICATION_INTERVAL_SECONDS, self._run_notifications),
+            LoopSpec(
+                "account-recovery",
+                ACCOUNT_RECOVERY_INTERVAL_SECONDS,
+                self._run_account_recovery,
+            ),
             LoopSpec(
                 "heartbeat",
                 self.settings.worker_heartbeat_seconds,
@@ -176,6 +186,17 @@ class WorkerScheduler:
             return
         async with self.database.session() as session:
             await self.notifications.dispatch_pending(session, self.sender, self.renderer, limit=20)
+
+    async def _run_account_recovery(self) -> None:
+        if self.account_recovery is None:
+            return
+        async with self.database.session() as session:
+            recovered = await self.account_recovery.run(session)
+        if recovered:
+            logger.info(
+                "suspended accounts came back on their own",
+                extra={"event_code": "ACCOUNT_RECOVERY_DONE", "recovered": recovered},
+            )
 
     async def _run_heartbeat(self, publisher: HeartbeatPublisher) -> None:
         async with self.database.session() as session:

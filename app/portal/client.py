@@ -394,7 +394,14 @@ class PortalClient:
         if challenge:
             raise PortalCaptchaRequired("portal requires a human challenge", challenge=challenge)
 
-        verified = await self.verify_session(session)
+        # Strict on purpose. A portal that cannot answer right now must not be
+        # reported as a wrong password: the caller reacts to a failed login by
+        # suspending the account and asking a human for credentials, so a
+        # passing outage would cost a working account its stored login.
+        try:
+            verified = await self._probe_session(session)
+        except ReauthenticationRequired as exc:
+            raise AuthenticationFailed("portal refused the session created by the login") from exc
         if not verified:
             raise AuthenticationFailed("portal login could not be verified")
 
@@ -403,18 +410,31 @@ class PortalClient:
             verified=True, cookies=session.export_cookies(), account_metadata=metadata
         )
 
+    async def _probe_session(self, session: PortalSession) -> bool:
+        """Ask the portal whether this session is authenticated.
+
+        Transport and throttling failures escape as themselves, so a caller
+        that must tell "not logged in" from "could not check" can do so.
+        """
+        response = await self._request(
+            session, "GET", APPOINTMENTS_PATH, operation="verify_session"
+        )
+        if not parsers.looks_authenticated(response.text):
+            return False
+        self._remember_csrf(session, response.text)
+        return True
+
     async def verify_session(self, session: PortalSession) -> bool:
-        """Confirm the session is authenticated using an explicit request.
+        """Confirm the stored session is usable, as a plain yes or no.
 
         Any portal error means the stored session cannot be trusted, not that
         the operation is over: letting one escape would skip the fresh login
         that is the only way back, and a jar the portal refuses would keep
-        failing for ever.
+        failing for ever.  Use :meth:`_probe_session` where the difference
+        between a refusal and an outage decides an account's fate.
         """
         try:
-            response = await self._request(
-                session, "GET", APPOINTMENTS_PATH, operation="verify_session"
-            )
+            return await self._probe_session(session)
         except ReauthenticationRequired:
             return False
         except PortalError as exc:
@@ -426,10 +446,6 @@ class PortalClient:
                 },
             )
             return False
-        if not parsers.looks_authenticated(response.text):
-            return False
-        self._remember_csrf(session, response.text)
-        return True
 
     async def fetch_user_info(self, session: PortalSession) -> dict[str, Any]:
         """Read the non-sensitive part of ``/user/info``.

@@ -22,6 +22,7 @@ aiogram long polling:
 - auto-prenotazione;
 - sincronizzazione appuntamenti;
 - coda notifiche e retry;
+- ripristino automatico degli account rifiutati dal portale;
 - cleanup nonce, stato conversazioni ed eventi;
 - heartbeat e circuit breaker.
 
@@ -115,7 +116,16 @@ Worker   -> Application services -> Domain -> Repositories/Portal adapter
 - `PortalSessionManager` carica cookie cifrati, verifica sessione e rinnova login.
 - Cookie aggiornati vengono cifrati e salvati soltanto dopo risposta valida.
 - Credenziali vengono decrittate nel minor scope possibile e subito dereferenziate.
-- Auth failure sospende job dell'account e notifica re-auth; niente loop password.
+- Un portale irraggiungibile, lento o che sta limitando le richieste **non è**
+  un auth failure: la verifica che segue il login distingue "il portale rifiuta"
+  da "il portale non risponde", altrimenti un disservizio di passaggio
+  costerebbe a un account funzionante le credenziali salvate.
+- Auth failure sospende job dell'account e notifica re-auth.
+- L'account sospeso riprova da solo le credenziali salvate, a intervalli
+  distanziati (`ACCOUNT_RECOVERY_DELAY_SECONDS`) e solo finché è
+  `REAUTH_REQUIRED`: niente loop password. Ogni rifiuto vero consuma un
+  tentativo, e al blocco l'account passa a una persona. Un account `LOCKED` o
+  fermato da un CAPTCHA non viene mai ritentato in automatico.
 - CSRF è acquisito per fase e non riutilizzato oltre la sessione prevista.
 
 ## Configurazione

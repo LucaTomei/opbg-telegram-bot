@@ -177,6 +177,22 @@ def render_notification(
             _accounts_keyboard(),
         )
 
+    if event.event_type is NotificationEventType.ACCOUNT_RECOVERED:
+        label = escape(str(payload.get("account_label", "")))
+        target = f" · {label}" if label else ""
+        resumed = int(payload.get("resumed", 0) or 0)
+        if resumed == 0:
+            tail = "Nessun monitoraggio era in pausa."
+        elif resumed == 1:
+            tail = "Ho ripreso il monitoraggio che era in pausa."
+        else:
+            tail = f"Ho ripreso i {resumed} monitoraggi che erano in pausa."
+        return (
+            f"✅ <b>Accesso al portale ripristinato</b>{target}\n"
+            f"Le credenziali salvate funzionano di nuovo: non devi fare nulla. {tail}",
+            _accounts_keyboard(),
+        )
+
     if event.event_type is NotificationEventType.WATCH_SUSPENDED:
         return (
             f"⏸ <b>Monitoraggio sospeso</b> · {watch_name}\n"

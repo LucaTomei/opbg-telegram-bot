@@ -30,7 +30,7 @@ from app.domain.errors import (
     RateLimitedError,
     ValidationError,
 )
-from app.worker.tasks import AppointmentSyncTask
+from app.worker.tasks import AccountRecoveryTask, AppointmentSyncTask
 from tests.support.factories import make_account, make_watch
 from tests.support.portal import VALID_EMAIL, VALID_PASSWORD, FakePortal
 
@@ -432,3 +432,133 @@ async def test_a_loss_after_a_successful_reauthentication_is_reported_again(
         NotificationEventType.REAUTH_REQUIRED,
         NotificationEventType.REAUTH_REQUIRED,
     ]
+
+
+# --- recovering without a human ----------------------------------------------
+async def _refused_account(
+    session: AsyncSession,
+    container: Container,
+    user: TelegramUser,
+    *,
+    failed_ago: timedelta = timedelta(hours=2),
+) -> PortalAccount:
+    """An account the portal refused, with its credentials still stored."""
+    account = await connect_account(session, container, user)
+    accounts = PortalAccountRepository(session)
+    await accounts.mark_auth_failure(account, error_code="AUTHENTICATION_FAILED", max_failures=5)
+    assert account.status is PortalAccountStatus.REAUTH_REQUIRED
+    account.last_error_at = utc_now() - failed_ago
+    await accounts.flush()
+    return account
+
+
+def _recovery_task(container: Container) -> AccountRecoveryTask:
+    return AccountRecoveryTask(container.settings, container.sessions, container.notifications)
+
+
+async def test_a_refused_account_comes_back_on_its_own(
+    clean_session: AsyncSession,
+    container: Container,
+    user: TelegramUser,
+    portal: FakePortal,
+) -> None:
+    """The stored credentials are retried without asking the user anything."""
+    account = await _refused_account(clean_session, container, user)
+    watch = await make_watch(clean_session, user, account)
+    watch.status = WatchStatus.PAUSED
+    watch.completed_reason = "REAUTH_REQUIRED"
+    await WatchRepository(clean_session).flush()
+
+    assert await _recovery_task(container).run(clean_session) == 1
+
+    assert account.status is PortalAccountStatus.ACTIVE
+    assert account.consecutive_auth_failures == 0
+    assert account.cookie_jar
+    assert watch.status is WatchStatus.ACTIVE
+    assert watch.completed_reason is None
+    page = await NotificationRepository(clean_session).list_for_user(user.id, page=0, page_size=10)
+    assert NotificationEventType.ACCOUNT_RECOVERED in {item.event_type for item in page.items}
+
+
+async def test_recovery_leaves_a_recent_failure_alone(
+    clean_session: AsyncSession,
+    container: Container,
+    user: TelegramUser,
+) -> None:
+    """The retry is spaced out, so a failure from a moment ago is not retried."""
+    account = await _refused_account(clean_session, container, user, failed_ago=timedelta(0))
+    assert await _recovery_task(container).run(clean_session) == 0
+    assert account.status is PortalAccountStatus.REAUTH_REQUIRED
+
+
+async def test_an_unreachable_portal_does_not_spend_a_recovery_attempt(
+    clean_session: AsyncSession,
+    container: Container,
+    user: TelegramUser,
+    portal: FakePortal,
+) -> None:
+    """A portal that cannot answer says nothing about the credentials.
+
+    Counting it would walk the account into the lockout that hands it to a
+    human, which is exactly what this is supposed to avoid.
+    """
+    account = await _refused_account(clean_session, container, user)
+    failures_before = account.consecutive_auth_failures
+    portal.transient_failures = 50
+
+    assert await _recovery_task(container).run(clean_session) == 0
+    assert account.status is PortalAccountStatus.REAUTH_REQUIRED
+    assert account.consecutive_auth_failures == failures_before
+
+
+async def test_a_password_that_really_changed_still_asks_the_user(
+    clean_session: AsyncSession,
+    container: Container,
+    user: TelegramUser,
+    portal: FakePortal,
+) -> None:
+    """Automation cannot invent the new password: the attempt must be spent."""
+    account = await _refused_account(clean_session, container, user)
+    failures_before = account.consecutive_auth_failures
+    _break_the_stored_login(portal)
+
+    assert await _recovery_task(container).run(clean_session) == 0
+    assert account.consecutive_auth_failures == failures_before + 1
+
+
+async def test_a_locked_account_is_never_retried_automatically(
+    clean_session: AsyncSession,
+    container: Container,
+    user: TelegramUser,
+) -> None:
+    """Retrying a locked account risks locking the real portal account."""
+    account = await _refused_account(clean_session, container, user)
+    account.status = PortalAccountStatus.LOCKED
+    await PortalAccountRepository(clean_session).flush()
+
+    assert await _recovery_task(container).run(clean_session) == 0
+    assert account.status is PortalAccountStatus.LOCKED
+
+
+async def test_re_enabling_an_account_resumes_the_monitors_it_paused(
+    clean_session: AsyncSession,
+    container: Container,
+    user: TelegramUser,
+) -> None:
+    """Disabling paused them, so enabling has to bring them back.
+
+    They used to stay paused, because only a monitor stopped by an
+    authentication failure was ever resumed.
+    """
+    watches = WatchRepository(clean_session)
+    account = await connect_account(clean_session, container, user)
+    watch = await make_watch(clean_session, user, account)
+    assert await container.accounts.set_enabled(clean_session, account, enabled=False) == 1
+    paused = await watches.get_any(watch.id)
+    assert paused is not None and paused.status is WatchStatus.PAUSED
+
+    assert await container.accounts.set_enabled(clean_session, account, enabled=True) == 1
+    resumed = await watches.get_any(watch.id)
+    assert resumed is not None
+    assert resumed.status is WatchStatus.ACTIVE
+    assert resumed.completed_reason is None
