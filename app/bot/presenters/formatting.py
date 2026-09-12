@@ -40,6 +40,17 @@ MONTHS_IT: tuple[str, ...] = (
 )
 
 
+def checkbox(selected: bool) -> str:
+    """State marker for a row the user can switch on and off.
+
+    One helper for every multiple-choice list, so a selected row never reads
+    differently from one screen to the next.  ``✅`` and not ``☑️``: the latter
+    draws as a pale grey box on iOS, which next to a green tick reads as the
+    off state rather than the on one.
+    """
+    return "✅" if selected else "⬜️"
+
+
 def escape(value: str | None) -> str:
     return html.escape(value or "", quote=False)
 

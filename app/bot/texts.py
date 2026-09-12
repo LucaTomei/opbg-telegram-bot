@@ -211,7 +211,9 @@ BOOK_SERVICE_NOT_ONLINE: Final[str] = (
 BOOK_CHOOSE_LOCATIONS: Final[str] = (
     "<b>Sedi</b>\nSeleziona una o più sedi, oppure scegli tutte le sedi."
 )
-BOOK_ALL_LOCATIONS: Final[str] = "✅ Tutte le sedi"
+#: The selection marker is added by the keyboard, never baked in here: a label
+#: carrying its own tick shows one while switched off, and two while on.
+BOOK_ALL_LOCATIONS: Final[str] = "Tutte le sedi"
 BOOK_LOCATIONS_NONE: Final[str] = "Seleziona almeno una sede per continuare."
 BOOK_NO_LOCATIONS: Final[str] = (
     "Il portale non ha restituito sedi per questa ricerca. "

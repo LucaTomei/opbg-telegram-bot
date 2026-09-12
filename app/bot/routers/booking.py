@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.bot import callbacks, texts
 from app.bot.keyboards.inline import Entry, build_actions, build_list
 from app.bot.presenters.formatting import (
+    checkbox,
     escape,
     format_excluded_dates,
     format_locations,
@@ -581,7 +582,7 @@ async def _render_locations(
     all_selected = draft.location_mode is LocationMode.ALL_DYNAMIC
     entries = [
         Entry(
-            f"{'☑️' if (all_selected or location.location_id in selected) else '⬜️'} "
+            f"{checkbox(all_selected or location.location_id in selected)} "
             f"{location.name}" + (f" ({location.slot_count})" if location.slot_count else ""),
             callbacks.build(NS, A_LOC_TOGGLE, draft.id, location.location_id),
         )
@@ -590,7 +591,7 @@ async def _render_locations(
     header = [
         [
             InlineKeyboardButton(
-                text=("✅ " if all_selected else "") + texts.BOOK_ALL_LOCATIONS,
+                text=f"{checkbox(all_selected)} {texts.BOOK_ALL_LOCATIONS}",
                 callback_data=callbacks.build(NS, A_LOC_ALL, draft.id),
             )
         ]
@@ -872,8 +873,7 @@ async def filter_weekdays(
     rows = [
         [
             Entry(
-                f"{'☑️' if weekday_selected(draft.weekdays_mask, day) else '⬜️'} "
-                f"{WEEKDAY_LABELS_IT[day]}",
+                f"{checkbox(weekday_selected(draft.weekdays_mask, day))} {WEEKDAY_LABELS_IT[day]}",
                 callbacks.build(FL, "wd", draft.id, day),
             )
             for day in group
