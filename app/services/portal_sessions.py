@@ -18,8 +18,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import Settings
 from app.db.models.accounts import PortalAccount
 from app.db.repositories.accounts import PortalAccountRepository
+from app.db.repositories.users import UserRepository
 from app.domain.entities import CookieJar
-from app.domain.enums import BreakerScope, PortalAccountStatus
+from app.domain.enums import BreakerScope, NotificationEventType, PortalAccountStatus
 from app.domain.errors import (
     AccountSuspendedError,
     AuthenticationFailed,
@@ -34,10 +35,22 @@ from app.logging import get_logger
 from app.portal.circuit_breaker import CircuitBreakerService
 from app.portal.client import PortalClient, PortalSession
 from app.portal.models import PortalCredentials
+from app.services.notifications import NotificationService
 
 logger = get_logger(__name__)
 
 MAX_AUTH_FAILURES = 3
+
+
+def reauth_subject(account: PortalAccount) -> str:
+    """Deduplication subject for the "login lost" notification of one account.
+
+    It carries the last successful login, so every failure inside the same
+    outage collapses into one message, while a loss that happens after the user
+    has re-authenticated is a new subject and notifies again.
+    """
+    stamp = account.last_login_at.isoformat() if account.last_login_at else "never"
+    return f"{account.id.hex}:reauth:{stamp}"
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,10 +68,12 @@ class PortalSessionManager:
         settings: Settings,
         client: PortalClient,
         breaker: CircuitBreakerService,
+        notifications: NotificationService | None = None,
     ) -> None:
         self._settings = settings
         self._client = client
         self._breaker = breaker
+        self._notifications = notifications
 
     @asynccontextmanager
     async def authenticated_session(
@@ -101,6 +116,7 @@ class PortalSessionManager:
                 raise
             except PortalCaptchaRequired as exc:
                 await accounts.mark_auth_failure(account, error_code=exc.code, max_failures=1)
+                await self._notify_login_lost(session, account, error_code=exc.code)
                 raise
             else:
                 await self._breaker.record_success(session, scope=BreakerScope.GLOBAL)
@@ -157,6 +173,35 @@ class PortalSessionManager:
                 "account_id": account.id.hex,
                 "error_code": error.code,
             },
+        )
+        await self._notify_login_lost(session, account, error_code=error.code)
+
+    async def _notify_login_lost(
+        self, session: AsyncSession, account: PortalAccount, *, error_code: str
+    ) -> None:
+        """Tell the owner that the stored login no longer works.
+
+        Queued here, where the loss is declared, so the message reaches the user
+        whichever task discovered it — a monitor, the hourly appointment sync or
+        an interactive action — instead of only the paths that remember to ask.
+        """
+        if self._notifications is None:
+            return
+        user = await UserRepository(session).get(account.telegram_user_id)
+        if user is None:
+            return
+        await self._notifications.queue(
+            session,
+            user=user,
+            event_type=NotificationEventType.REAUTH_REQUIRED,
+            subject=reauth_subject(account),
+            payload={
+                "account_id": account.id.hex,
+                "account_label": account.label,
+                "status": account.status.value,
+                "error_code": error_code,
+            },
+            portal_account_id=account.id,
         )
 
     async def _persist_cookies(

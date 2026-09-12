@@ -17,7 +17,7 @@ from app.bot.keyboards.inline import Entry, build_actions
 from app.bot.presenters.formatting import escape
 from app.db.models.notifications import NotificationEvent
 from app.db.models.users import TelegramUser
-from app.domain.enums import NotificationEventType
+from app.domain.enums import NotificationEventType, PortalAccountStatus
 from app.logging import get_logger
 
 logger = get_logger(__name__)
@@ -160,10 +160,20 @@ def render_notification(
         )
 
     if event.event_type is NotificationEventType.REAUTH_REQUIRED:
+        label = escape(str(payload.get("account_label", "")))
+        target = f" · {label}" if label else ""
+        locked = str(payload.get("status", "")) == PortalAccountStatus.LOCKED.value
+        reason = (
+            "Il portale ha rifiutato l'accesso troppe volte e l'account è stato "
+            "<b>bloccato</b> per sicurezza."
+            if locked
+            else "L'accesso salvato non è più valido e il nuovo tentativo è stato rifiutato."
+        )
         return (
-            "🔐 <b>Credenziali da aggiornare</b>\n"
-            "L'accesso al portale non è più valido: i monitoraggi collegati sono "
-            "in pausa. Aggiorna le credenziali dalla sezione Account.",
+            f"🔐 <b>Accesso al portale perso</b>{target}\n"
+            f"{reason}\n"
+            "I monitoraggi collegati sono in pausa: aggiorna le credenziali dalla "
+            "sezione Account per farli ripartire.",
             _accounts_keyboard(),
         )
 

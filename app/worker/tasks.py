@@ -63,6 +63,7 @@ from app.logging import correlation_scope, get_logger
 from app.services.bookings import BookingRequest, BookingService
 from app.services.mapping import watch_filter, watch_selection
 from app.services.notifications import NotificationService
+from app.services.portal_sessions import reauth_subject
 from app.services.search import SearchService
 
 logger = get_logger(__name__)
@@ -484,13 +485,22 @@ class WatchProcessor:
         user = await users.get(watch.telegram_user_id)
         if user is None:
             return
+        account = await PortalAccountRepository(session).get(watch.portal_account_id)
+        # The session manager already queues this when it is the one that finds
+        # the login gone; sharing its subject keeps the two paths a single
+        # message. A disabled account never reaches it, and is reported here.
+        subject = (
+            reauth_subject(account) if account is not None else f"{watch.portal_account_id.hex}"
+        )
         await self._notifications.queue(
             session,
             user=user,
             event_type=NotificationEventType.REAUTH_REQUIRED,
-            subject=f"{watch.portal_account_id.hex}",
+            subject=subject,
             payload={
                 "account_id": watch.portal_account_id.hex,
+                "account_label": "" if account is None else account.label,
+                "status": "" if account is None else account.status.value,
                 "watch_name": watch.name,
                 "error_code": error_code,
             },

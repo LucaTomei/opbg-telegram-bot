@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
+
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -28,6 +30,7 @@ from app.domain.errors import (
     RateLimitedError,
     ValidationError,
 )
+from app.worker.tasks import AppointmentSyncTask
 from tests.support.factories import make_account, make_watch
 from tests.support.portal import VALID_EMAIL, VALID_PASSWORD, FakePortal
 
@@ -331,3 +334,101 @@ async def test_an_account_cannot_be_opened_by_another_user(
     intruder = await UserRepository(clean_session).create(telegram_id=999200)
     with pytest.raises(NotFoundError):
         await container.accounts.require_account(clean_session, intruder, account.id)
+
+
+# --- a lost login is always reported -----------------------------------------
+def _break_the_stored_login(portal: FakePortal) -> None:
+    """Make the stored jar unusable and the stored credentials rejected."""
+    portal.session_expired = True
+    portal.valid_credentials = ("nessuno@example.invalid", "x" * 12)
+
+
+async def _reauth_events(session: AsyncSession, user: TelegramUser) -> list[NotificationEventType]:
+    page = await NotificationRepository(session).list_for_user(user.id, page=0, page_size=20)
+    return [
+        event.event_type
+        for event in page.items
+        if event.event_type is NotificationEventType.REAUTH_REQUIRED
+    ]
+
+
+async def test_the_appointment_sync_reports_a_lost_login(
+    clean_session: AsyncSession,
+    container: Container,
+    user: TelegramUser,
+    portal: FakePortal,
+) -> None:
+    """The hourly sync used to suspend the account without telling anyone.
+
+    It is the job that touches every active account, so it is usually the first
+    to notice that the portal no longer accepts the stored credentials. An
+    account with no monitor at all was left silently unusable.
+    """
+    account = await connect_account(clean_session, container, user)
+    account.last_sync_at = None
+    await PortalAccountRepository(clean_session).flush()
+    _break_the_stored_login(portal)
+
+    task = AppointmentSyncTask(container.settings, container.appointments, container.notifications)
+    assert await task.run(clean_session, limit=5) == 0
+
+    assert account.status is PortalAccountStatus.REAUTH_REQUIRED
+    assert await _reauth_events(clean_session, user) == [NotificationEventType.REAUTH_REQUIRED]
+
+
+async def test_one_outage_produces_one_message(
+    clean_session: AsyncSession,
+    container: Container,
+    user: TelegramUser,
+    portal: FakePortal,
+) -> None:
+    """Repeated failures while the login stays broken must not spam the chat."""
+    account = await connect_account(clean_session, container, user)
+    _break_the_stored_login(portal)
+
+    for _ in range(3):
+        with pytest.raises(AuthenticationFailed):
+            async with container.sessions.authenticated_session(clean_session, account):
+                pass  # pragma: no cover - the context manager raises on entry
+        account.status = PortalAccountStatus.ACTIVE
+
+    assert await _reauth_events(clean_session, user) == [NotificationEventType.REAUTH_REQUIRED]
+
+
+async def test_a_loss_after_a_successful_reauthentication_is_reported_again(
+    clean_session: AsyncSession,
+    container: Container,
+    user: TelegramUser,
+    portal: FakePortal,
+) -> None:
+    """Deduplication must not swallow the second outage.
+
+    The subject carries the last successful login, so re-authenticating opens a
+    new one instead of silencing the account for the whole retention window.
+    """
+    account = await connect_account(clean_session, container, user)
+    _break_the_stored_login(portal)
+    with pytest.raises(AuthenticationFailed):
+        async with container.sessions.authenticated_session(clean_session, account):
+            pass  # pragma: no cover - the context manager raises on entry
+    assert await _reauth_events(clean_session, user) == [NotificationEventType.REAUTH_REQUIRED]
+
+    portal.reset()
+    await container.accounts.reauthenticate(
+        clean_session, user, account, email=VALID_EMAIL, password=VALID_PASSWORD
+    )
+    assert account.status is PortalAccountStatus.ACTIVE
+    # utc_now() has one-second precision, so a reconnection in the same second
+    # as the previous login would reuse its subject. Only a test is that fast.
+    account.last_login_at = utc_now() + timedelta(seconds=1)
+    await PortalAccountRepository(clean_session).flush()
+
+    _break_the_stored_login(portal)
+    with pytest.raises(AuthenticationFailed):
+        async with container.sessions.authenticated_session(clean_session, account):
+            pass  # pragma: no cover - the context manager raises on entry
+
+    assert await _reauth_events(clean_session, user) == [
+        NotificationEventType.REAUTH_REQUIRED,
+        NotificationEventType.REAUTH_REQUIRED,
+    ]

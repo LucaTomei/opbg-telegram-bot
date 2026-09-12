@@ -257,9 +257,9 @@ def build_container(settings: Settings, database: Database, portal: FakePortal) 
         jitter=lambda: 0.0,
     )
     breaker = CircuitBreakerService(build_breaker_policy(settings))
-    sessions = PortalSessionManager(settings, client, breaker)
-    search = SearchService(settings, client, sessions)
     notifications = NotificationService(settings)
+    sessions = PortalSessionManager(settings, client, breaker, notifications)
+    search = SearchService(settings, client, sessions)
     return Container(
         settings=settings,
         database=database,

@@ -96,10 +96,12 @@ def build_container(
     portal_gate = gate or DatabasePortalGate(db.session_factory, policy)
     client = PortalClient(resolved, limiter=limiter, gate=portal_gate)
     breaker = CircuitBreakerService(build_breaker_policy(resolved))
-    sessions = PortalSessionManager(resolved, client, breaker)
+    # Built before the session manager: losing a portal login is something the
+    # owner has to be told about, whichever task discovers it.
+    notifications = NotificationService(resolved)
+    sessions = PortalSessionManager(resolved, client, breaker, notifications)
     search = SearchService(resolved, client, sessions)
 
-    notifications = NotificationService(resolved)
     return Container(
         settings=resolved,
         database=db,
