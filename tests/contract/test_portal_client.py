@@ -253,6 +253,34 @@ async def test_throttling_during_the_check_is_not_a_wrong_password(
             )
 
 
+async def test_a_portal_that_changed_shape_is_not_a_wrong_password(
+    settings: Settings,
+) -> None:
+    """A redesign must not look like every password going bad at once.
+
+    The check can only fail two ways: the portal asks for credentials again,
+    which is a refusal, or it answers something this adapter does not
+    recognise, which is a contract change and an alert for the administrator.
+    """
+    client = build_client(settings, _login_then(lambda: html(load("contract_changed.html"))))
+    async with client.session(account_key="a") as portal_session:
+        with pytest.raises(PortalContractChanged):
+            await client.login(
+                portal_session, PortalCredentials(SYNTHETIC_EMAIL, SYNTHETIC_PASSWORD)
+            )
+
+
+async def test_being_asked_for_credentials_again_is_a_wrong_password(
+    settings: Settings,
+) -> None:
+    client = build_client(settings, _login_then(lambda: html(load("login_failed.html"))))
+    async with client.session(account_key="a") as portal_session:
+        with pytest.raises(AuthenticationFailed):
+            await client.login(
+                portal_session, PortalCredentials(SYNTHETIC_EMAIL, SYNTHETIC_PASSWORD)
+            )
+
+
 async def test_a_session_the_portal_refuses_after_a_login_is_a_wrong_password(
     settings: Settings,
 ) -> None:

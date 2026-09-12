@@ -399,10 +399,17 @@ class PortalClient:
         # suspending the account and asking a human for credentials, so a
         # passing outage would cost a working account its stored login.
         try:
-            verified = await self._probe_session(session)
+            verified, page = await self._probe_session(session)
         except ReauthenticationRequired as exc:
             raise AuthenticationFailed("portal refused the session created by the login") from exc
         if not verified:
+            if not parsers.looks_like_login_form(page):
+                # The portal neither let us in nor asked for credentials. It
+                # has changed shape, and calling that a wrong password would
+                # suspend every account at once over a site redesign.
+                raise PortalContractChanged(
+                    "the portal answered the login check with an unknown page"
+                )
             raise AuthenticationFailed("portal login could not be verified")
 
         metadata = await self.fetch_user_info(session)
@@ -410,19 +417,21 @@ class PortalClient:
             verified=True, cookies=session.export_cookies(), account_metadata=metadata
         )
 
-    async def _probe_session(self, session: PortalSession) -> bool:
+    async def _probe_session(self, session: PortalSession) -> tuple[bool, str]:
         """Ask the portal whether this session is authenticated.
 
-        Transport and throttling failures escape as themselves, so a caller
-        that must tell "not logged in" from "could not check" can do so.
+        Returns the verdict together with the page it was read from, so a
+        caller can tell why the answer was no. Transport and throttling
+        failures escape as themselves, so "not logged in" and "could not
+        check" never collapse into the same answer either.
         """
         response = await self._request(
             session, "GET", APPOINTMENTS_PATH, operation="verify_session"
         )
         if not parsers.looks_authenticated(response.text):
-            return False
+            return False, response.text
         self._remember_csrf(session, response.text)
-        return True
+        return True, response.text
 
     async def verify_session(self, session: PortalSession) -> bool:
         """Confirm the stored session is usable, as a plain yes or no.
@@ -434,7 +443,7 @@ class PortalClient:
         between a refusal and an outage decides an account's fate.
         """
         try:
-            return await self._probe_session(session)
+            verified, _ = await self._probe_session(session)
         except ReauthenticationRequired:
             return False
         except PortalError as exc:
@@ -446,6 +455,7 @@ class PortalClient:
                 },
             )
             return False
+        return verified
 
     async def fetch_user_info(self, session: PortalSession) -> dict[str, Any]:
         """Read the non-sensitive part of ``/user/info``.

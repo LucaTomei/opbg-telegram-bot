@@ -251,6 +251,9 @@ class PortalSessionManager:
                     },
                 )
                 return False
+        # The account breaker may have been half open to let this attempt
+        # through; a login that worked is the proof it was waiting for.
+        await self._breaker.record_success(session, scope=BreakerScope.ACCOUNT, subject=subject)
         logger.info(
             "the stored credentials work again",
             extra={"event_code": "ACCOUNT_RECOVERED", "account_id": account.id.hex},

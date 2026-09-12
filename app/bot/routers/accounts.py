@@ -13,13 +13,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot import callbacks, texts
 from app.bot.keyboards.inline import Entry, build_actions, build_list
+from app.bot.presenters.errors import describe_error
 from app.bot.presenters.formatting import escape, format_account, format_patient
 from app.bot.routers.common import acknowledge, page_size, render, send_new
 from app.composition import Container
 from app.db.models.users import TelegramUser
 from app.db.repositories.accounts import PatientRepository
 from app.domain.enums import ConfirmationAction, PortalAccountStatus
-from app.domain.errors import AuthenticationFailed, NotFoundError, ValidationError
+from app.domain.errors import (
+    AuthenticationFailed,
+    DomainError,
+    NotFoundError,
+    ValidationError,
+)
 from app.logging import get_logger
 from app.services.accounts import clean_email
 
@@ -188,6 +194,7 @@ async def receive_password(
     container: Container,
     user: TelegramUser,
     state: FSMContext,
+    correlation_id: str = "",
 ) -> None:
     """Verify the credentials and store them, keeping nothing in the chat.
 
@@ -229,6 +236,16 @@ async def receive_password(
             )
     except AuthenticationFailed:
         await notice.edit_text(texts.ACCOUNT_CONNECT_FAILED, parse_mode="HTML")
+        return
+    except DomainError as exc:
+        # Not the password, the portal. Answering where the user is already
+        # looking beats leaving "checking your credentials" on screen for ever
+        # while the explanation arrives underneath it as a separate message.
+        logger.info(
+            "the credentials could not be checked",
+            extra={"event_code": exc.code, "correlation_id": correlation_id},
+        )
+        await notice.edit_text(describe_error(exc, correlation_id), parse_mode="HTML")
         return
     finally:
         del password

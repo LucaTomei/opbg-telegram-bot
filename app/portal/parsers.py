@@ -142,10 +142,20 @@ def parse_login_form(html: str) -> HtmlForm:
     return form
 
 
+def looks_like_login_form(html: str) -> bool:
+    """Whether the page is asking for credentials.
+
+    This is the portal saying "you are not logged in" in so many words, and it
+    is what separates a refused password from a portal that simply no longer
+    looks the way this adapter expects.
+    """
+    document = HTMLParser(html)
+    return document.css_first('form[action*="/login"] input[name="password"]') is not None
+
+
 def looks_authenticated(html: str) -> bool:
     """Heuristic used together with an explicit verification request."""
-    document = HTMLParser(html)
-    if document.css_first('form[action*="/login"] input[name="password"]') is not None:
+    if looks_like_login_form(html):
         return False
     markers = ("/logout", "appointments-list", "appointment-form", "/user/info")
     lowered = html.lower()

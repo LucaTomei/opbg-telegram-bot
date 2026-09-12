@@ -120,6 +120,11 @@ Worker   -> Application services -> Domain -> Repositories/Portal adapter
   un auth failure: la verifica che segue il login distingue "il portale rifiuta"
   da "il portale non risponde", altrimenti un disservizio di passaggio
   costerebbe a un account funzionante le credenziali salvate.
+- Allo stesso modo, una verifica che non riconosce la pagina **non è** un auth
+  failure: se il portale non ci fa entrare ma non ci richiede nemmeno le
+  credenziali ha cambiato forma, ed è `PORTAL_CONTRACT_CHANGED` con evento di
+  sistema per l'amministratore. Trattarlo come password sbagliata sospenderebbe
+  tutti gli account insieme per un restyling del sito.
 - Auth failure sospende job dell'account e notifica re-auth.
 - L'account sospeso riprova da solo le credenziali salvate, a intervalli
   distanziati (`ACCOUNT_RECOVERY_DELAY_SECONDS`) e solo finché è
