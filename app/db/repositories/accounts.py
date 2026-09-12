@@ -190,6 +190,10 @@ class PortalAccountRepository(BaseRepository[PortalAccount]):
                 PortalAccount.last_error_at.asc(),
             )
             .limit(limit)
+            # Claimed, not merely read: two workers picking the same account
+            # would send two logins with the same refused password, spending
+            # twice the attempts it is allowed before being locked.
+            .with_for_update(skip_locked=True)
         )
         result = await self.session.scalars(statement)
         return list(result)

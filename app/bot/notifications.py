@@ -160,6 +160,16 @@ def render_notification(
         )
 
     if event.event_type is NotificationEventType.REAUTH_REQUIRED:
+        if str(payload.get("error_code", "")) == "CONNECT_LOCKED":
+            # Nothing was stored and no monitor exists: this is someone who
+            # mistyped the password while adding an account, and telling them
+            # their saved login broke would simply be untrue.
+            return (
+                "🔐 <b>Troppi tentativi di collegamento</b>\n"
+                "Per sicurezza ho sospeso i tentativi per un'ora. "
+                "Controlla le credenziali sul portale e riprova più tardi.",
+                _accounts_keyboard(),
+            )
         label = escape(str(payload.get("account_label", "")))
         target = f" · {label}" if label else ""
         locked = str(payload.get("status", "")) == PortalAccountStatus.LOCKED.value

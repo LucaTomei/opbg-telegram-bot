@@ -589,6 +589,7 @@ class AccountRecoveryTask:
                 resumed = await WatchRepository(session).resume_for_account(
                     account.id, reason=REASON_REAUTH_REQUIRED
                 )
+                await self._notify_recovered(session, account, resumed=len(resumed), now=moment)
             except DomainError as exc:
                 # One account's surprise must not discard the whole batch.
                 logger.warning(
@@ -600,7 +601,6 @@ class AccountRecoveryTask:
                     },
                 )
                 continue
-            await self._notify_recovered(session, account, resumed=len(resumed), now=moment)
             recovered += 1
         return recovered
 

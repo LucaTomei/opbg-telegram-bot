@@ -49,9 +49,14 @@ def reauth_subject(account: PortalAccount) -> str:
     It carries the last successful login, so every failure inside the same
     outage collapses into one message, while a loss that happens after the user
     has re-authenticated is a new subject and notifies again.
+
+    It also carries the status, because being locked out is a different thing
+    to be told than being asked to update credentials: without it the
+    escalation would land on the key the first failure already used and the
+    one message that says "I have stopped trying" would never be sent.
     """
     stamp = account.last_login_at.isoformat() if account.last_login_at else "never"
-    return f"{account.id.hex}:reauth:{stamp}"
+    return f"{account.id.hex}:reauth:{stamp}:{account.status.value}"
 
 
 @dataclass(frozen=True, slots=True)
@@ -225,7 +230,12 @@ class PortalSessionManager:
         try:
             await self._breaker.ensure_closed(session, scope=BreakerScope.GLOBAL)
             await self._breaker.ensure_closed(session, scope=BreakerScope.ACCOUNT, subject=subject)
-        except CircuitOpenError:
+        except CircuitOpenError as exc:
+            # Record the attempt even though nothing was sent. The queue is
+            # ordered by this timestamp and only a few accounts are taken per
+            # pass, so a handful of accounts behind an open breaker would
+            # otherwise be re-picked for ever and starve the ones behind them.
+            await accounts.mark_error(account, error_code=exc.code)
             return False
 
         async with self._client.session(account_key=subject) as portal_session:

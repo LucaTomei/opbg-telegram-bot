@@ -76,7 +76,7 @@ def test_a_payload_queued_before_the_account_details_still_renders() -> None:
     """Rows already in the queue carry neither label nor status."""
     event = build_event(
         NotificationEventType.REAUTH_REQUIRED,
-        {"account_id": "c" * 32, "watch_name": "Monitor", "error_code": "CONNECT_LOCKED"},
+        {"account_id": "c" * 32, "watch_name": "Monitor", "error_code": "AUTHENTICATION_FAILED"},
     )
     text, _ = render_notification(event, build_user())
     assert "Accesso al portale perso" in text
@@ -110,3 +110,15 @@ def test_a_single_resumed_monitor_reads_as_one() -> None:
     )
     text, _ = render_notification(event, build_user())
     assert "il monitoraggio che era in pausa" in text
+
+
+def test_a_connect_lockout_does_not_claim_a_saved_login_broke() -> None:
+    """This path runs before any account exists, so it has none of its own."""
+    event = build_event(
+        NotificationEventType.REAUTH_REQUIRED,
+        {"account_id": "1" * 32, "watch_name": "", "error_code": "CONNECT_LOCKED"},
+    )
+    text, _ = render_notification(event, build_user())
+    assert "Troppi tentativi" in text
+    assert "monitoraggi collegati sono in pausa" not in text
+    assert "non è più valido" not in text

@@ -30,6 +30,7 @@ from app.domain.errors import (
     RateLimitedError,
     ValidationError,
 )
+from app.services.portal_sessions import MAX_AUTH_FAILURES
 from app.worker.tasks import AccountRecoveryTask, AppointmentSyncTask
 from tests.support.factories import make_account, make_watch
 from tests.support.portal import VALID_EMAIL, VALID_PASSWORD, FakePortal
@@ -376,23 +377,63 @@ async def test_the_appointment_sync_reports_a_lost_login(
     assert await _reauth_events(clean_session, user) == [NotificationEventType.REAUTH_REQUIRED]
 
 
+async def _fail_the_login(
+    session: AsyncSession, container: Container, account: PortalAccount
+) -> None:
+    """Drive one refused login, then let the account be tried again.
+
+    An account stops being usable after the first failure, so the status is put
+    back deliberately: the point of the loop is the notification, not the guard.
+    """
+    with pytest.raises(AuthenticationFailed):
+        async with container.sessions.authenticated_session(session, account):
+            pass  # pragma: no cover - the context manager raises on entry
+    account.status = PortalAccountStatus.ACTIVE
+
+
 async def test_one_outage_produces_one_message(
     clean_session: AsyncSession,
     container: Container,
     user: TelegramUser,
     portal: FakePortal,
 ) -> None:
-    """Repeated failures while the login stays broken must not spam the chat."""
+    """Repeated failures at the same status must not spam the chat."""
     account = await connect_account(clean_session, container, user)
     _break_the_stored_login(portal)
 
-    for _ in range(3):
-        with pytest.raises(AuthenticationFailed):
-            async with container.sessions.authenticated_session(clean_session, account):
-                pass  # pragma: no cover - the context manager raises on entry
-        account.status = PortalAccountStatus.ACTIVE
+    await _fail_the_login(clean_session, container, account)
+    await _fail_the_login(clean_session, container, account)
 
     assert await _reauth_events(clean_session, user) == [NotificationEventType.REAUTH_REQUIRED]
+
+
+async def test_being_locked_out_is_reported_even_after_the_first_warning(
+    clean_session: AsyncSession,
+    container: Container,
+    user: TelegramUser,
+    portal: FakePortal,
+) -> None:
+    """Being locked out is the message that matters most: it must not dedupe.
+
+    It says the retries have stopped and only the user can fix it, so it has to
+    survive the deduplication that silences the failures leading up to it.
+    """
+    account = await connect_account(clean_session, container, user)
+    _break_the_stored_login(portal)
+
+    for _ in range(MAX_AUTH_FAILURES):
+        await _fail_the_login(clean_session, container, account)
+
+    page = await NotificationRepository(clean_session).list_for_user(user.id, page=0, page_size=10)
+    statuses = {
+        str(item.payload.get("status", ""))
+        for item in page.items
+        if item.event_type is NotificationEventType.REAUTH_REQUIRED
+    }
+    assert statuses == {
+        PortalAccountStatus.REAUTH_REQUIRED.value,
+        PortalAccountStatus.LOCKED.value,
+    }
 
 
 async def test_a_loss_after_a_successful_reauthentication_is_reported_again(
