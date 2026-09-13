@@ -80,6 +80,9 @@ class FakePortal:
     #: When ``True`` the authenticated routes answer with a server error while a
     #: stored session is presented, as the portal does with a jar it refuses.
     stored_session_is_refused: bool = False
+    #: When ``True`` the booking wizard answers with a server error while the
+    #: login itself keeps working: a portal that goes down mid-flow.
+    wizard_is_unavailable: bool = False
     pdf_content_type: str = "application/pdf"
     pdf_bytes: bytes = PDF_BYTES
 
@@ -110,6 +113,7 @@ class FakePortal:
             "transient_failures",
             "session_expired",
             "stored_session_is_refused",
+            "wizard_is_unavailable",
             "pdf_content_type",
             "pdf_bytes",
             "session_cookie",
@@ -166,6 +170,8 @@ class FakePortal:
         if path == "/appointments/history":
             return _html(load("appointments_list_empty.html"))
         if path == "/appointments/create" and request.method == "GET":
+            if self.wizard_is_unavailable:
+                return httpx.Response(503, text="wizard temporarily unavailable")
             return _html(load("appointments_create_lapi.html"))
         if path == "/appointments/create":
             return self._handle_create(request)

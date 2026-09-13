@@ -148,11 +148,15 @@ class AccountService:
             )
         except RateLimitedError:
             if self._notifications is not None:
+                # The subject carries the limiter's own window, or the unique
+                # index would let one lockout silence every later one for the
+                # whole retention period.
+                window = utc_now().replace(minute=0, second=0, microsecond=0)
                 await self._notifications.queue(
                     session,
                     user=user,
                     event_type=NotificationEventType.REAUTH_REQUIRED,
-                    subject=f"{user.id.hex}:connect-locked",
+                    subject=f"{user.id.hex}:connect-locked:{window.isoformat()}",
                     payload={
                         "account_id": user.id.hex,
                         "watch_name": "",

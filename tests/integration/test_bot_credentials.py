@@ -220,3 +220,40 @@ async def test_reauthentication_asks_only_for_email_and_password(
         accounts = await PortalAccountRepository(session).list_for_user(member.id)
         assert len(accounts) == 1
         assert accounts[0].email == VALID_EMAIL
+
+
+# --- a portal failure must leave nothing behind -------------------------------
+async def test_a_portal_failure_after_the_login_leaves_no_half_built_account(
+    bot: BotHarness, member: TelegramUser, bot_portal: FakePortal, database: Database
+) -> None:
+    """The account is written before the patients are fetched.
+
+    If that fetch fails the user is told the portal is unreachable, and the
+    half-built account must not survive: it could not be added a second time,
+    because the flow would find it already there.
+    """
+    bot_portal.wizard_is_unavailable = True
+    await run_flow(bot)
+
+    assert not bot.contains("collegato")
+    assert bot.contains("portale")
+    async with database.read_session() as session:
+        assert await PortalAccountRepository(session).list_for_user(member.id) == []
+
+
+async def test_the_account_can_still_be_added_once_the_portal_recovers(
+    bot: BotHarness, member: TelegramUser, bot_portal: FakePortal, database: Database
+) -> None:
+    """The proof that nothing was left behind: the same flow works next time."""
+    bot_portal.wizard_is_unavailable = True
+    await run_flow(bot)
+
+    bot_portal.wizard_is_unavailable = False
+    bot.reset()
+    await run_flow(bot)
+
+    assert bot.contains("collegato")
+    async with database.read_session() as session:
+        accounts = await PortalAccountRepository(session).list_for_user(member.id)
+        assert len(accounts) == 1
+        assert accounts[0].status is PortalAccountStatus.ACTIVE

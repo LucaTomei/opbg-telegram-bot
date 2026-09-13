@@ -210,6 +210,18 @@ class PortalSessionManager:
             portal_account_id=account.id,
         )
 
+    async def portal_is_available(self, session: AsyncSession) -> bool:
+        """Whether the global breaker allows any portal traffic at all.
+
+        Asked before a caller commits to an account, so a portal that is shut
+        to everyone does not cost each account a place in the queue.
+        """
+        try:
+            await self._breaker.ensure_closed(session, scope=BreakerScope.GLOBAL)
+        except CircuitOpenError:
+            return False
+        return True
+
     async def try_recover(self, session: AsyncSession, account: PortalAccount) -> bool:
         """Log in again with the stored credentials, with no human involved.
 
@@ -227,15 +239,14 @@ class PortalSessionManager:
             return False
         accounts = PortalAccountRepository(session)
         subject = account.id.hex
+        # Checked apart, because the two mean different things here: a global
+        # stop applies to every account alike, while an account-scoped one is
+        # this account waiting its turn.
+        if not await self.portal_is_available(session):
+            return False
         try:
-            await self._breaker.ensure_closed(session, scope=BreakerScope.GLOBAL)
             await self._breaker.ensure_closed(session, scope=BreakerScope.ACCOUNT, subject=subject)
-        except CircuitOpenError as exc:
-            # Record the attempt even though nothing was sent. The queue is
-            # ordered by this timestamp and only a few accounts are taken per
-            # pass, so a handful of accounts behind an open breaker would
-            # otherwise be re-picked for ever and starve the ones behind them.
-            await accounts.mark_error(account, error_code=exc.code)
+        except CircuitOpenError:
             return False
 
         async with self._client.session(account_key=subject) as portal_session:
@@ -261,8 +272,12 @@ class PortalSessionManager:
                     },
                 )
                 return False
-        # The account breaker may have been half open to let this attempt
-        # through; a login that worked is the proof it was waiting for.
+        # Either breaker may have been half open to let this attempt through,
+        # and a login that worked is the proof each was waiting for. Leaving
+        # one half open would let the next hiccup anywhere reopen it at once,
+        # whatever its threshold, because that is what a half open breaker
+        # does with a failure.
+        await self._breaker.record_success(session, scope=BreakerScope.GLOBAL)
         await self._breaker.record_success(session, scope=BreakerScope.ACCOUNT, subject=subject)
         logger.info(
             "the stored credentials work again",

@@ -161,9 +161,11 @@ def render_notification(
 
     if event.event_type is NotificationEventType.REAUTH_REQUIRED:
         if str(payload.get("error_code", "")) == "CONNECT_LOCKED":
-            # Nothing was stored and no monitor exists: this is someone who
-            # mistyped the password while adding an account, and telling them
-            # their saved login broke would simply be untrue.
+            # Reached while adding an account and while updating an existing
+            # one, so it must not claim anything about a stored login: in the
+            # first case there is none, and in the second the old one is still
+            # there untouched. What both need to know is that the attempts
+            # have been paused.
             return (
                 "🔐 <b>Troppi tentativi di collegamento</b>\n"
                 "Per sicurezza ho sospeso i tentativi per un'ora. "

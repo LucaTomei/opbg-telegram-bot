@@ -589,11 +589,25 @@ class AccountRecoveryTask:
         if not self._settings.account_recovery_enabled:
             return RecoveryOutcome(attempted=0, recovered=0)
         moment = now or utc_now()
+        if not await self._sessions.portal_is_available(session):
+            # Nothing would reach the portal anyway, and claiming would push
+            # each account a whole delay further away without one attempt.
+            return RecoveryOutcome(attempted=0, recovered=0)
         accounts = PortalAccountRepository(session)
         due = await accounts.list_awaiting_recovery(
             older_than=moment - timedelta(seconds=self._settings.account_recovery_delay_seconds),
             limit=limit or self._settings.account_recovery_batch_size,
         )
+        # Claim and let go. The select holds an exclusive lock on each row, and
+        # a login can take most of a minute: the owner of that very account may
+        # be updating their credentials by hand right now, and their write would
+        # wait on the lock and then fail. Committing the stamp frees the row and
+        # takes the account out of the queue at the same time, so no other
+        # worker picks it up while this one is busy with it.
+        for account in due:
+            account.last_error_at = moment
+        await accounts.flush()
+        await session.commit()
         recovered = 0
         for account in due:
             try:

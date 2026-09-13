@@ -24,6 +24,7 @@ from app.domain.errors import (
     AuthenticationFailed,
     DomainError,
     NotFoundError,
+    RateLimitedError,
     ValidationError,
 )
 from app.logging import get_logger
@@ -234,13 +235,25 @@ async def receive_password(
                 texts.ACCOUNT_CONNECTED.format(label=escape(account.label), patients=len(patients)),
                 parse_mode="HTML",
             )
-    except AuthenticationFailed:
-        await notice.edit_text(texts.ACCOUNT_CONNECT_FAILED, parse_mode="HTML")
+    except (AuthenticationFailed, RateLimitedError) as exc:
+        # These two count the attempt, and the count is the whole point of the
+        # limit, so their writes must survive.
+        message_text = (
+            texts.ACCOUNT_CONNECT_FAILED
+            if isinstance(exc, AuthenticationFailed)
+            else describe_error(exc, correlation_id)
+        )
+        await notice.edit_text(message_text, parse_mode="HTML")
         return
     except DomainError as exc:
-        # Not the password, the portal. Answering where the user is already
-        # looking beats leaving "checking your credentials" on screen for ever
-        # while the explanation arrives underneath it as a separate message.
+        # Anything else and nothing may survive. Both flows write the account
+        # and its session before talking to the portal again, so a failure
+        # after that would commit half of the work: an account that can no
+        # longer be added because it is already there, or one marked active
+        # whose monitors stay paused with nobody left to resume them. The
+        # error boundary rolls the update back only when the exception
+        # reaches it, and it is answered here instead.
+        await session.rollback()
         logger.info(
             "the credentials could not be checked",
             extra={"event_code": exc.code, "correlation_id": correlation_id},
