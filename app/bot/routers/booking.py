@@ -14,7 +14,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.bot import callbacks, texts
 from app.bot.keyboards.inline import Entry, build_actions, build_list
 from app.bot.presenters.formatting import (
-    checkbox,
     escape,
     format_excluded_dates,
     format_locations,
@@ -25,6 +24,7 @@ from app.bot.presenters.formatting import (
     format_slot_detail,
     format_time_windows,
     format_weekdays,
+    selection_marker,
 )
 from app.bot.routers.common import (
     acknowledge,
@@ -582,7 +582,7 @@ async def _render_locations(
     all_selected = draft.location_mode is LocationMode.ALL_DYNAMIC
     entries = [
         Entry(
-            f"{checkbox(all_selected or location.location_id in selected)} "
+            f"{selection_marker(all_selected or location.location_id in selected)} "
             f"{location.name}" + (f" ({location.slot_count})" if location.slot_count else ""),
             callbacks.build(NS, A_LOC_TOGGLE, draft.id, location.location_id),
         )
@@ -591,7 +591,7 @@ async def _render_locations(
     header = [
         [
             InlineKeyboardButton(
-                text=f"{checkbox(all_selected)} {texts.BOOK_ALL_LOCATIONS}",
+                text=f"{selection_marker(all_selected)} {texts.BOOK_ALL_LOCATIONS}",
                 callback_data=callbacks.build(NS, A_LOC_ALL, draft.id),
             )
         ]
@@ -873,7 +873,8 @@ async def filter_weekdays(
     rows = [
         [
             Entry(
-                f"{checkbox(weekday_selected(draft.weekdays_mask, day))} {WEEKDAY_LABELS_IT[day]}",
+                f"{selection_marker(weekday_selected(draft.weekdays_mask, day))} "
+                f"{WEEKDAY_LABELS_IT[day]}",
                 callbacks.build(FL, "wd", draft.id, day),
             )
             for day in group
@@ -1053,7 +1054,7 @@ async def filter_sort(
     rows = [
         [
             Entry(
-                ("✅ " if draft.sort_strategy is strategy else "")
+                f"{selection_marker(draft.sort_strategy is strategy)} "
                 + texts.FILTER_SORT_LABELS[strategy.value],
                 callbacks.build(FL, "sort", draft.id, strategy.value),
             )
@@ -1083,7 +1084,7 @@ async def filter_lead(
     rows = [
         [
             Entry(
-                ("✅ " if draft.min_lead_hours == hours else "")
+                f"{selection_marker(draft.min_lead_hours == hours)} "
                 + (f"{hours} ore" if hours else "nessun anticipo"),
                 callbacks.build(FL, "lead", draft.id, hours),
             )

@@ -40,13 +40,16 @@ MONTHS_IT: tuple[str, ...] = (
 )
 
 
-def checkbox(selected: bool) -> str:
-    """State marker for a row the user can switch on and off.
+def selection_marker(selected: bool) -> str:
+    """State marker for a row the user can choose.
 
-    One helper for every multiple-choice list, so a selected row never reads
-    differently from one screen to the next.  ``✅`` and not ``☑️``: the latter
-    draws as a pale grey box on iOS, which next to a green tick reads as the
-    off state rather than the on one.
+    One helper for every list the user picks from, whether it takes several
+    answers (locations, weekdays) or just one (sort order, interval), so a
+    chosen row never reads differently from one screen to the next, and an
+    unchosen one is always drawn rather than left blank.
+
+    ``✅`` and not ``☑️``: the latter draws as a pale grey box on iOS, which
+    next to a green tick reads as the off state rather than the on one.
     """
     return "✅" if selected else "⬜️"
 

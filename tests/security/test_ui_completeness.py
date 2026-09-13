@@ -45,6 +45,21 @@ def test_every_reply_keyboard_button_has_a_handler() -> None:
     assert MAIN_BUTTON_TEXTS - handled == set()
 
 
+def test_selection_state_goes_through_one_helper() -> None:
+    """A row the user picks must never draw its own marker.
+
+    Spelling the chosen state differently from one screen to the next is how
+    the location picker came to show a doubled green tick on the option that
+    was on, a plain green tick on the same option when it was off, and a pale
+    grey tick on the rows underneath it.
+    """
+    sources = router_sources()
+    for pattern in ('"✅ " if', "'✅ ' if", "☑️", "⬜️"):
+        assert pattern not in sources, (
+            f"{pattern} is spelled out in a router; use formatting.selection_marker"
+        )
+
+
 def test_every_documented_command_has_a_handler() -> None:
     sources = router_sources()
     handled = set(re.findall(r'Command\("(\w+)"\)', sources))

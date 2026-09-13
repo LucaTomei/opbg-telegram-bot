@@ -5,7 +5,11 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from app.bot import texts
-from app.bot.presenters.formatting import checkbox, format_price, format_slot_button
+from app.bot.presenters.formatting import (
+    format_price,
+    format_slot_button,
+    selection_marker,
+)
 from app.domain.entities import PortalSlot
 
 
@@ -49,9 +53,9 @@ def test_the_two_selection_states_cannot_be_mistaken_for_each_other() -> None:
     ``☑️`` used to mark a chosen row; on iOS it draws as a pale grey box that,
     next to a green tick, reads as the off state.
     """
-    assert checkbox(True) != checkbox(False)
-    assert checkbox(True) == "✅"
-    assert "✅" not in checkbox(False)
+    assert selection_marker(True) != selection_marker(False)
+    assert selection_marker(True) == "✅"
+    assert "✅" not in selection_marker(False)
 
 
 def test_a_switchable_label_carries_no_marker_of_its_own() -> None:

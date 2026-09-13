@@ -18,6 +18,7 @@ from app.bot.presenters.formatting import (
     format_watch_detail,
     format_watch_row,
     format_watch_summary,
+    selection_marker,
 )
 from app.bot.routers.common import acknowledge, page_size, render
 from app.composition import Container
@@ -738,7 +739,7 @@ async def change_interval(
     rows = [
         [
             Entry(
-                ("✅ " if watch.interval_seconds == seconds else "")
+                f"{selection_marker(watch.interval_seconds == seconds)} "
                 + (f"{seconds // 60} min" if seconds >= 60 else f"{seconds} s"),
                 callbacks.build(NS, A_INTERVAL_SET, watch.id, seconds),
             )
