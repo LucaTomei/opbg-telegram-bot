@@ -510,7 +510,7 @@ async def test_a_refused_account_comes_back_on_its_own(
     watch.completed_reason = "REAUTH_REQUIRED"
     await WatchRepository(clean_session).flush()
 
-    assert await _recovery_task(container).run(clean_session) == 1
+    assert (await _recovery_task(container).run(clean_session)).recovered == 1
 
     assert account.status is PortalAccountStatus.ACTIVE
     assert account.consecutive_auth_failures == 0
@@ -528,7 +528,7 @@ async def test_recovery_leaves_a_recent_failure_alone(
 ) -> None:
     """The retry is spaced out, so a failure from a moment ago is not retried."""
     account = await _refused_account(clean_session, container, user, failed_ago=timedelta(0))
-    assert await _recovery_task(container).run(clean_session) == 0
+    assert (await _recovery_task(container).run(clean_session)).recovered == 0
     assert account.status is PortalAccountStatus.REAUTH_REQUIRED
 
 
@@ -547,7 +547,7 @@ async def test_an_unreachable_portal_does_not_spend_a_recovery_attempt(
     failures_before = account.consecutive_auth_failures
     portal.transient_failures = 50
 
-    assert await _recovery_task(container).run(clean_session) == 0
+    assert (await _recovery_task(container).run(clean_session)).recovered == 0
     assert account.status is PortalAccountStatus.REAUTH_REQUIRED
     assert account.consecutive_auth_failures == failures_before
 
@@ -563,7 +563,7 @@ async def test_a_password_that_really_changed_still_asks_the_user(
     failures_before = account.consecutive_auth_failures
     _break_the_stored_login(portal)
 
-    assert await _recovery_task(container).run(clean_session) == 0
+    assert (await _recovery_task(container).run(clean_session)).recovered == 0
     assert account.consecutive_auth_failures == failures_before + 1
 
 
@@ -577,7 +577,7 @@ async def test_a_locked_account_is_never_retried_automatically(
     account.status = PortalAccountStatus.LOCKED
     await PortalAccountRepository(clean_session).flush()
 
-    assert await _recovery_task(container).run(clean_session) == 0
+    assert (await _recovery_task(container).run(clean_session)).recovered == 0
     assert account.status is PortalAccountStatus.LOCKED
 
 
@@ -603,3 +603,36 @@ async def test_re_enabling_an_account_resumes_the_monitors_it_paused(
     assert resumed is not None
     assert resumed.status is WatchStatus.ACTIVE
     assert resumed.completed_reason is None
+
+
+async def test_recovery_hands_back_one_account_at_a_time(
+    clean_session: AsyncSession,
+    container: Container,
+    user: TelegramUser,
+    portal: FakePortal,
+) -> None:
+    """The scheduler relies on this to give each login its own transaction.
+
+    Each selected row stays locked until the caller commits, so the number of
+    attempts has to be honest: the loop stops on a pass that found nothing, and
+    would otherwise either quit early or keep asking for work that is not there.
+    """
+    recoverable = await _refused_account(clean_session, container, user)
+    # A second account due at the same time. Its stored password is not the one
+    # the portal accepts, so it is attempted and refused rather than recovered.
+    doomed = await make_account(clean_session, user, email=OTHER_EMAIL, label="Secondo")
+    accounts = PortalAccountRepository(clean_session)
+    await accounts.mark_auth_failure(doomed, error_code="AUTHENTICATION_FAILED", max_failures=5)
+    doomed.last_error_at = utc_now() - timedelta(hours=1)
+    await accounts.flush()
+    refusals = doomed.consecutive_auth_failures
+
+    task = _recovery_task(container)
+    assert (await task.run(clean_session, limit=1)).attempted == 1
+    assert (await task.run(clean_session, limit=1)).attempted == 1
+    # One is active again and the other has just failed, so neither is due.
+    assert (await task.run(clean_session, limit=1)).attempted == 0
+
+    assert recoverable.status is PortalAccountStatus.ACTIVE
+    assert doomed.status is PortalAccountStatus.REAUTH_REQUIRED
+    assert doomed.consecutive_auth_failures == refusals + 1

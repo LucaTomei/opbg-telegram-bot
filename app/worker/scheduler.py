@@ -188,10 +188,25 @@ class WorkerScheduler:
             await self.notifications.dispatch_pending(session, self.sender, self.renderer, limit=20)
 
     async def _run_account_recovery(self) -> None:
+        """Recover the accounts that are due, one transaction each.
+
+        One at a time on purpose: the row is held for the whole login, and a
+        batch sharing a transaction would hold several of them for the sum of
+        their logins. The account being retried is exactly the one whose owner
+        may be re-authenticating by hand right now, and blocking them would
+        shut the door this feature exists to avoid needing.
+        """
         if self.account_recovery is None:
             return
-        async with self.database.session() as session:
-            recovered = await self.account_recovery.run(session)
+        recovered = 0
+        for _ in range(self.settings.account_recovery_batch_size):
+            if self._stopping.is_set():
+                break
+            async with self.database.session() as session:
+                outcome = await self.account_recovery.run(session, limit=1)
+            recovered += outcome.recovered
+            if not outcome.attempted:
+                break
         if recovered:
             logger.info(
                 "suspended accounts came back on their own",

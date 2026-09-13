@@ -548,6 +548,14 @@ class WatchProcessor:
         )
 
 
+@dataclass(frozen=True, slots=True)
+class RecoveryOutcome:
+    """How one recovery pass went."""
+
+    attempted: int
+    recovered: int
+
+
 class AccountRecoveryTask:
     """Brings a refused account back without asking the user for anything.
 
@@ -571,10 +579,15 @@ class AccountRecoveryTask:
 
     async def run(
         self, session: AsyncSession, *, now: datetime | None = None, limit: int | None = None
-    ) -> int:
-        """Try the stored credentials of every account that is due, and report."""
+    ) -> RecoveryOutcome:
+        """Try the stored credentials of every account that is due, and report.
+
+        The caller decides how many accounts share a transaction; the rows this
+        selects stay locked until it commits, so a caller that keeps one open
+        across several logins also keeps them locked for that long.
+        """
         if not self._settings.account_recovery_enabled:
-            return 0
+            return RecoveryOutcome(attempted=0, recovered=0)
         moment = now or utc_now()
         accounts = PortalAccountRepository(session)
         due = await accounts.list_awaiting_recovery(
@@ -602,7 +615,7 @@ class AccountRecoveryTask:
                 )
                 continue
             recovered += 1
-        return recovered
+        return RecoveryOutcome(attempted=len(due), recovered=recovered)
 
     async def _notify_recovered(
         self, session: AsyncSession, account: PortalAccount, *, resumed: int, now: datetime
