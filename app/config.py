@@ -350,8 +350,3 @@ def get_settings() -> Settings:
         return Settings()
     except Exception as exc:  # pragma: no cover - exercised through tests with bad env
         raise ConfigurationError(f"invalid application configuration: {exc}") from exc
-
-
-def reset_settings_cache() -> None:
-    """Clear the cached settings; used by tests and by key-rotation scripts."""
-    get_settings.cache_clear()

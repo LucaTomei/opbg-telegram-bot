@@ -133,10 +133,6 @@ class CancellationAmbiguous(PortalError):
     code = "CANCELLATION_AMBIGUOUS"
 
 
-class CancellationRejected(PortalError):
-    code = "CANCELLATION_REJECTED"
-
-
 class PdfUnavailable(PortalError):
     code = "PDF_UNAVAILABLE"
 

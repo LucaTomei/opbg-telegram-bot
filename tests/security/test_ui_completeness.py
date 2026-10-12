@@ -1,7 +1,7 @@
 """No visible control may be missing its handler.
 
 These checks are the automated form of the audit required by
-``docs/09-testing-acceptance.md`` (AC-025).
+``docs/08-testing-acceptance.md`` (AC-025).
 """
 
 from __future__ import annotations

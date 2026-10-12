@@ -29,10 +29,6 @@ def appointment_lock_name(appointment_id: uuid.UUID) -> str:
     return f"{APPOINTMENT_LOCK_PREFIX}_{appointment_id.hex}"
 
 
-def watch_lock_name(watch_id: uuid.UUID) -> str:
-    return f"{WATCH_LOCK_PREFIX}_{watch_id.hex}"
-
-
 @asynccontextmanager
 async def account_lock(
     session: AsyncSession, account_id: uuid.UUID, *, timeout_seconds: int = 0

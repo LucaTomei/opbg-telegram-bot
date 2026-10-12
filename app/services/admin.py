@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -394,33 +394,6 @@ class AdminService:
             correlation_id=correlation_id or new_correlation_id(),
         )
 
-    async def force_account_sync(
-        self,
-        session: AsyncSession,
-        admin: TelegramUser,
-        *,
-        account_id: uuid.UUID,
-        reason: str,
-        correlation_id: str | None = None,
-    ) -> PortalAccount:
-        """Schedule a non-destructive re-synchronisation of an account."""
-        require_admin(admin)
-        accounts = PortalAccountRepository(session)
-        account = await accounts.get(account_id)
-        if account is None:
-            raise NotFoundError("portal account not found")
-        account.last_sync_at = None
-        await accounts.flush()
-        await AuditRepository(session).record(
-            admin_user_id=admin.id,
-            action=AuditAction.FORCED_SYNC,
-            target_type="portal_account",
-            target_id=account.id.hex,
-            reason=reason,
-            correlation_id=correlation_id or new_correlation_id(),
-        )
-        return account
-
     async def override_breaker(
         self,
         session: AsyncSession,
@@ -714,12 +687,4 @@ class AdminService:
         require_admin(admin)
         return await WatchRunLogRepository(session).list_for_watch(
             watch_id, page=page, page_size=page_size
-        )
-
-    async def recent_audit_window(
-        self, session: AsyncSession, admin: TelegramUser, *, days: int = 7
-    ) -> Page[Any]:
-        require_admin(admin)
-        return await AuditRepository(session).list_entries(
-            page=0, page_size=20, since=utc_now() - timedelta(days=days)
         )

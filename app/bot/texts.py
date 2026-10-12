@@ -73,7 +73,8 @@ CONSENT_TEXT: Final[str] = (
     "• Questo è un servizio <b>privato e non ufficiale</b>, non gestito "
     "dall'Ospedale Pediatrico Bambino Gesù.\n"
     "• Il bot accede al portale di prenotazione <b>per tuo conto</b>, usando "
-    "credenziali che fornisci tu tramite una pagina HTTPS temporanea.\n"
+    "credenziali che scrivi tu in questa chat: il messaggio con la password "
+    "viene cancellato subito dopo la lettura.\n"
     "• Email, password, cookie di sessione e identificativi dei pazienti sono "
     "<b>cifrati</b> nel database.\n"
     "• Vengono trattati dati relativi a prestazioni sanitarie: le chat Telegram "
@@ -204,10 +205,6 @@ BOOK_ASK_SERVICE_QUERY: Final[str] = (
 BOOK_ASK_DOCTOR_QUERY: Final[str] = "Scrivi il cognome del medico da cercare (almeno 3 caratteri)."
 BOOK_NO_RESULTS: Final[str] = "Nessun risultato per <b>{query}</b>. Prova con un altro testo."
 BOOK_RESULTS_TITLE: Final[str] = "<b>Risultati per «{query}»</b>\nSeleziona la voce esatta."
-BOOK_SERVICE_NOT_ONLINE: Final[str] = (
-    "⚠️ Questa prestazione non risulta prenotabile online dal portale. "
-    "Puoi comunque provare, ma potrebbe non mostrare disponibilità."
-)
 BOOK_CHOOSE_LOCATIONS: Final[str] = (
     "<b>Sedi</b>\nSeleziona una o più sedi, oppure scegli tutte le sedi."
 )
@@ -312,7 +309,6 @@ FILTER_SORT_LABELS: Final[dict[str, str]] = {
 FILTER_LEAD_TITLE: Final[str] = (
     "<b>Anticipo minimo</b>\nNon proporre slot prima di questo intervallo da adesso."
 )
-FILTER_CLEARED: Final[str] = "Filtri reimpostati."
 
 # --- watches -----------------------------------------------------------------
 WATCHES_EMPTY: Final[str] = (
@@ -398,7 +394,6 @@ APPOINTMENT_CANCEL_AMBIGUOUS: Final[str] = (
 APPOINTMENT_PDF_SENT: Final[str] = "Promemoria inviato."
 APPOINTMENT_PDF_UNAVAILABLE: Final[str] = "Il promemoria non è disponibile per questo appuntamento."
 BTN_CANCEL_APPOINTMENT: Final[str] = "🗑 Disdici"
-BTN_APPOINTMENT_DETAILS: Final[str] = "🔍 Dettagli"
 
 # --- settings ----------------------------------------------------------------
 SETTINGS_TITLE: Final[str] = "<b>Impostazioni</b>"

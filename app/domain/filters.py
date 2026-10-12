@@ -27,7 +27,6 @@ from app.domain.enums import DateMode, LocationMode, SortStrategy
 
 ROME = ZoneInfo("Europe/Rome")
 
-MAX_ROLLING_DAYS = 365
 MAX_TIME_WINDOWS = 6
 MAX_EXCLUDED_DATES = 60
 

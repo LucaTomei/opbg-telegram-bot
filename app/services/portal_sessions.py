@@ -8,10 +8,8 @@ rejected: the account is suspended and the user is asked to re-authenticate.
 
 from __future__ import annotations
 
-import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from dataclasses import dataclass
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -57,13 +55,6 @@ def reauth_subject(account: PortalAccount) -> str:
     """
     stamp = account.last_login_at.isoformat() if account.last_login_at else "never"
     return f"{account.id.hex}:reauth:{stamp}:{account.status.value}"
-
-
-@dataclass(frozen=True, slots=True)
-class SessionOutcome:
-    """Result of preparing a portal session."""
-
-    reauthenticated: bool
 
 
 class PortalSessionManager:
@@ -317,13 +308,3 @@ class PortalSessionManager:
         async with self._client.session(account_key=account_key) as portal_session:
             result = await self._client.login(portal_session, credentials)
             return result.cookies, result.account_metadata
-
-    async def load_patients(
-        self, session: AsyncSession, account: PortalAccount
-    ) -> tuple[object, ...]:
-        async with self.authenticated_session(session, account) as portal_session:
-            return await self._client.open_lapi_wizard(portal_session)
-
-
-def account_subject(account_id: uuid.UUID) -> str:
-    return account_id.hex

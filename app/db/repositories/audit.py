@@ -12,7 +12,6 @@ from datetime import datetime
 
 from sqlalchemy import Select, event, select, text
 from sqlalchemy.orm import Mapper
-from sqlalchemy.orm.session import ORMExecuteState
 
 from app.db.models.system import AdminAuditLog
 from app.db.repositories.base import BaseRepository, Page, utc_now
@@ -101,12 +100,3 @@ class AuditRepository(BaseRepository[AdminAuditLog]):
         )
         await self.session.flush()
         return int(getattr(result, "rowcount", 0) or 0)
-
-
-def guard_audit_statement(state: ORMExecuteState) -> None:
-    """Reject bulk updates or deletes targeting the audit table."""
-    if not (state.is_update or state.is_delete):
-        return
-    for entity in state.all_mappers:
-        if entity.class_ is AdminAuditLog:
-            raise AuditLogImmutableError("the administrative audit log is append-only")

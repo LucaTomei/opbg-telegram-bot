@@ -140,14 +140,6 @@ def build_actions(
     return builder.as_markup()
 
 
-def url_button(label: str, url: str, *, back_target: str | None = None) -> InlineKeyboardMarkup:
-    """A single link button, used for the one-time HTTPS connection page."""
-    builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text=truncate(label), url=url))
-    builder.row(*navigation_row(back_target=back_target))
-    return builder.as_markup()
-
-
 def confirmation(
     *, confirm_label: str, confirm_data: str, back_target: str | None = None
 ) -> InlineKeyboardMarkup:

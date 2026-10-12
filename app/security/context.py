@@ -9,9 +9,6 @@ dependency injection.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
-from contextlib import contextmanager
-
 from app.config import Settings
 from app.security.blind_index import BlindIndexService
 from app.security.encryption import EncryptionService
@@ -67,23 +64,3 @@ def get_token_hasher() -> TokenHasher:
     if _token_hasher is None:
         raise SecurityNotConfiguredError("token hasher is not configured")
     return _token_hasher
-
-
-def is_configured() -> bool:
-    return _encryption is not None and _blind_index is not None and _token_hasher is not None
-
-
-@contextmanager
-def security_context(
-    encryption: EncryptionService,
-    blind_index: BlindIndexService,
-    token_hasher: TokenHasher | None = None,
-) -> Iterator[None]:
-    """Temporarily install security services; used by tests and rotation jobs."""
-    global _encryption, _blind_index, _token_hasher
-    previous = (_encryption, _blind_index, _token_hasher)
-    configure_security(encryption, blind_index, token_hasher)
-    try:
-        yield
-    finally:
-        _encryption, _blind_index, _token_hasher = previous

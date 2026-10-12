@@ -33,7 +33,6 @@ from app.domain.enums import LocationMode, SearchType
 from app.domain.errors import (
     AmbiguousSearchResult,
     DoctorServiceRequired,
-    NoAvailability,
     NotFoundError,
     ServiceNotBookableOnline,
     ValidationError,
@@ -319,8 +318,3 @@ class SearchService:
                 slots=tuple(filtered),
                 total_before_filter=len(unique),
             )
-
-    @staticmethod
-    def ensure_any(result: AvailabilityResult) -> None:
-        if not result.slots:
-            raise NoAvailability("no slot matches the current filters")

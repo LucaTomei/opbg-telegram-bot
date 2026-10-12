@@ -79,10 +79,6 @@ class EncryptionService:
     def active_key_version(self) -> int:
         return self._active_version
 
-    @property
-    def known_key_versions(self) -> tuple[int, ...]:
-        return tuple(sorted(self._ciphers))
-
     def encrypt(self, plaintext: str | bytes, context: EncryptionContext) -> bytes:
         """Encrypt a value, returning the self-describing envelope."""
         raw = plaintext.encode("utf-8") if isinstance(plaintext, str) else bytes(plaintext)

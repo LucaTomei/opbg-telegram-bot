@@ -3,17 +3,14 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from datetime import date
 
 from app.db.models.conversations import BookingDraft
 from app.db.models.watches import BookingWatch, WatchLocation
-from app.domain.entities import SearchSelection, SlotFilter, TimeWindow
-from app.domain.enums import DateMode, LocationMode, SearchType, SortStrategy
+from app.domain.entities import SearchSelection, SlotFilter
+from app.domain.enums import SearchType
 from app.domain.filters import (
     parse_excluded_dates,
     parse_time_windows,
-    serialize_excluded_dates,
-    serialize_time_windows,
 )
 
 
@@ -126,27 +123,6 @@ def copy_filters(source: BookingDraft, target: BookingWatch) -> None:
     target.time_windows_json = list(source.time_windows_json)
     target.excluded_dates_json = list(source.excluded_dates_json)
     target.sort_strategy = source.sort_strategy
-
-
-def set_time_windows(target: BookingDraft | BookingWatch, windows: Sequence[TimeWindow]) -> None:
-    target.time_windows_json = serialize_time_windows(windows)
-
-
-def set_excluded_dates(target: BookingDraft | BookingWatch, dates: Sequence[date]) -> None:
-    target.excluded_dates_json = serialize_excluded_dates(dates)
-
-
-def describe_locations(entries: Sequence[dict[str, str]]) -> str:
-    if not entries:
-        return "tutte le sedi"
-    return ", ".join(str(entry.get("name", entry.get("id", ""))) for entry in entries)
-
-
-DEFAULTS = {
-    "date_mode": DateMode.ROLLING,
-    "location_mode": LocationMode.ALL_DYNAMIC,
-    "sort_strategy": SortStrategy.EARLIEST,
-}
 
 
 def copy_watch_into_draft(watch: BookingWatch, draft: BookingDraft) -> None:

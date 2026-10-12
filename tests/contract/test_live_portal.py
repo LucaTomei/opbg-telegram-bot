@@ -9,7 +9,7 @@ they are disabled in continuous integration by default.
     .venv/bin/python -m pytest tests/contract/test_live_portal.py -m live
 
 Booking and cancellation against the real portal are deliberately not
-automated: see ``docs/10-runbook.md`` for the manual procedure.
+automated: see ``docs/09-runbook.md`` for the manual procedure.
 """
 
 from __future__ import annotations

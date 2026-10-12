@@ -103,16 +103,6 @@ class BookingAttemptStatus(StrEnum):
     AMBIGUOUS = "AMBIGUOUS"
     FAILED = "FAILED"
 
-    @property
-    def is_terminal(self) -> bool:
-        return self in (
-            BookingAttemptStatus.SUCCEEDED,
-            BookingAttemptStatus.SLOT_LOST,
-            BookingAttemptStatus.REJECTED,
-            BookingAttemptStatus.AMBIGUOUS,
-            BookingAttemptStatus.FAILED,
-        )
-
 
 @unique
 class BookingStage(StrEnum):

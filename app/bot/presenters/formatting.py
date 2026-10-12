@@ -58,10 +58,6 @@ def escape(value: str | None) -> str:
     return html.escape(value or "", quote=False)
 
 
-def format_date(value: date) -> str:
-    return f"{value.day} {MONTHS_IT[value.month - 1]} {value.year}"
-
-
 def format_short_date(value: date) -> str:
     return value.strftime("%d/%m/%Y")
 
@@ -277,10 +273,6 @@ def format_watch_detail(
     if watch.last_error_code:
         lines.append(f"Ultimo errore: <code>{escape(watch.last_error_code)}</code>")
     return "\n".join(lines)
-
-
-def bullet_list(items: Sequence[str]) -> str:
-    return "\n".join(f"• {item}" for item in items) if items else texts.EMPTY_PAGE
 
 
 def format_watch_summary(

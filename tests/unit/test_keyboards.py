@@ -15,7 +15,6 @@ from app.bot.keyboards.inline import (
     navigation_row,
     pagination_row,
     truncate,
-    url_button,
 )
 from app.bot.keyboards.reply import MAIN_BUTTON_TEXTS, main_keyboard
 
@@ -109,13 +108,6 @@ def test_long_labels_are_truncated_for_telegram() -> None:
     label = truncate("x" * 200)
     assert len(label) <= 64
     assert label.endswith("…")
-
-
-def test_url_button_carries_no_callback_data() -> None:
-    markup = url_button("Apri", "https://example.test/connect/abc")
-    button = flatten(markup)[0]
-    assert button.url == "https://example.test/connect/abc"
-    assert button.callback_data is None
 
 
 def test_confirmation_keyboard_offers_cancel() -> None:

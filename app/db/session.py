@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
-from typing import Any
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import (
@@ -166,7 +165,3 @@ async def named_lock(
             yield
         finally:
             await connection.exec_driver_sql(f"SELECT RELEASE_LOCK('{lock_name}')")
-
-
-async def execute_scalar(session: AsyncSession, statement: str, **params: Any) -> Any:
-    return await session.scalar(text(statement), params)

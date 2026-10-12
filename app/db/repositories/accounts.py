@@ -109,10 +109,6 @@ class PortalAccountRepository(BaseRepository[PortalAccount]):
             account.status = PortalAccountStatus.ACTIVE
         await self.flush()
 
-    async def clear_session(self, account: PortalAccount) -> None:
-        account.cookie_jar = None
-        await self.flush()
-
     async def mark_auth_failure(
         self, account: PortalAccount, *, error_code: str, max_failures: int
     ) -> None:

@@ -19,7 +19,7 @@ from app.db.repositories.conversations import (
 )
 from app.db.repositories.users import InviteRepository, UserRepository
 from app.db.repositories.watches import WatchRepository
-from app.domain.enums import UserRole, UserStatus, WatchStatus
+from app.domain.enums import UserRole, UserStatus
 from app.domain.errors import (
     AlreadyConsumedError,
     ExpiredError,
@@ -87,14 +87,6 @@ class UserService:
 
     async def get_or_none(self, session: AsyncSession, telegram_id: int) -> TelegramUser | None:
         return await UserRepository(session).get_by_telegram_id(telegram_id)
-
-    async def require_user(self, session: AsyncSession, telegram_id: int) -> TelegramUser:
-        user = await self.get_or_none(session, telegram_id)
-        if user is None or user.status is UserStatus.DELETED:
-            raise PermissionDeniedError("user is not registered")
-        if user.status is UserStatus.BLOCKED:
-            raise PermissionDeniedError("user is blocked")
-        return user
 
     async def update_profile(
         self,
@@ -315,12 +307,3 @@ class InviteService:
         if invite is None:
             raise NotFoundError("invite not found")
         await invites.revoke(invite)
-
-
-async def suspend_user_watches(session: AsyncSession, user_id: uuid.UUID, *, reason: str) -> int:
-    """Pause every active monitor owned by a user."""
-    watches = WatchRepository(session)
-    page = await watches.list_all(page=0, page_size=500, user_id=user_id, status=WatchStatus.ACTIVE)
-    for watch in page.items:
-        await watches.set_status(watch, WatchStatus.PAUSED, reason=reason)
-    return len(page.items)

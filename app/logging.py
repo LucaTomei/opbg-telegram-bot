@@ -66,10 +66,6 @@ def get_correlation_id() -> str | None:
     return _CORRELATION_ID.get()
 
 
-def set_correlation_id(correlation_id: str | None) -> None:
-    _CORRELATION_ID.set(correlation_id)
-
-
 @contextmanager
 def correlation_scope(correlation_id: str | None = None) -> Iterator[str]:
     """Bind a correlation identifier for the duration of the block."""

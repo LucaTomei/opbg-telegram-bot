@@ -41,14 +41,6 @@ class Page[ModelT: Base]:
             return 1
         return max(1, -(-self.total // self.page_size))
 
-    @property
-    def has_previous(self) -> bool:
-        return self.page > 0
-
-    @property
-    def has_next(self) -> bool:
-        return self.page + 1 < self.pages
-
 
 class BaseRepository[ModelT: Base]:
     """Common query helpers bound to a single session."""

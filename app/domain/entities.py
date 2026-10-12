@@ -160,13 +160,6 @@ class TimeWindow:
     def to_json(self) -> dict[str, str]:
         return {"start": self.start.strftime("%H:%M"), "end": self.end.strftime("%H:%M")}
 
-    @classmethod
-    def from_json(cls, payload: dict[str, str]) -> TimeWindow:
-        return cls(
-            start=time.fromisoformat(payload["start"]),
-            end=time.fromisoformat(payload["end"]),
-        )
-
 
 @dataclass(frozen=True, slots=True)
 class SlotFilter:
@@ -187,9 +180,6 @@ class SlotFilter:
     max_results: int = 40
     required_doctor_id: str | None = None
     required_service_id: str | None = None
-
-    def describe_weekdays(self) -> tuple[int, ...]:
-        return tuple(index for index in range(7) if self.weekdays_mask & (1 << index))
 
 
 @dataclass(frozen=True, slots=True)

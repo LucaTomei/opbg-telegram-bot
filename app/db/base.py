@@ -81,10 +81,6 @@ class SoftDeleteMixin:
 
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=False), default=None)
 
-    @property
-    def is_deleted(self) -> bool:
-        return self.deleted_at is not None
-
 
 class VersionMixin:
     """Optimistic locking counter managed by SQLAlchemy."""

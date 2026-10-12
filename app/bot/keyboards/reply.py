@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from aiogram.types import KeyboardButton, ReplyKeyboardMarkup, ReplyKeyboardRemove
+from aiogram.types import KeyboardButton, ReplyKeyboardMarkup
 
 from app.bot import texts
 
@@ -24,11 +24,6 @@ def main_keyboard(*, is_admin: bool) -> ReplyKeyboardMarkup:
         is_persistent=True,
         input_field_placeholder="Scegli un'operazione",
     )
-
-
-def remove_keyboard() -> ReplyKeyboardRemove:
-    """Hide the reply keyboard while a free-text answer is expected."""
-    return ReplyKeyboardRemove()
 
 
 MAIN_BUTTON_TEXTS: frozenset[str] = frozenset(

@@ -102,14 +102,11 @@ APPOINTMENT: Final[str] = "ap"
 SETTINGS: Final[str] = "st"
 ADMIN: Final[str] = "ad"
 CONSENT: Final[str] = "cs"
-CONFIRM: Final[str] = "cf"
 
 # --- shared actions ----------------------------------------------------------
 ACTION_MENU: Final[str] = "menu"
 ACTION_CANCEL: Final[str] = "cancel"
 ACTION_NOOP: Final[str] = "noop"
-ACTION_PAGE: Final[str] = "page"
-ACTION_REFRESH: Final[str] = "refresh"
 
 
 def menu() -> str:

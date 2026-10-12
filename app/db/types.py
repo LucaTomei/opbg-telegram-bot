@@ -29,10 +29,6 @@ def uuid7() -> uuid.UUID:
     return uuid.UUID(bytes=bytes(value))
 
 
-def uuid7_hex() -> str:
-    return uuid7().hex
-
-
 class UuidBinary(TypeDecorator[uuid.UUID]):
     """Store a :class:`uuid.UUID` as a compact ``BINARY(16)`` column."""
 

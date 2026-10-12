@@ -14,7 +14,7 @@ from app.db.models.users import TelegramUser
 from app.db.models.watches import BookingWatch
 from app.db.repositories.accounts import PatientRepository, PortalAccountRepository
 from app.db.repositories.base import Page, utc_now
-from app.db.repositories.watches import SeenSlotRepository, WatchRepository
+from app.db.repositories.watches import WatchRepository
 from app.domain.enums import (
     LocationMode,
     SearchType,
@@ -265,18 +265,6 @@ class WatchService:
         watch.mode = mode
         await WatchRepository(session).flush()
 
-    async def set_notify_only_changes(
-        self, session: AsyncSession, watch: BookingWatch, *, only_changes: bool
-    ) -> None:
-        watch.notify_only_changes = only_changes
-        await WatchRepository(session).flush()
-
-    async def set_completion_policy(
-        self, session: AsyncSession, watch: BookingWatch, *, policy: WatchCompletionPolicy
-    ) -> None:
-        watch.completion_policy = policy
-        await WatchRepository(session).flush()
-
     async def set_interval(
         self, session: AsyncSession, watch: BookingWatch, *, seconds: int
     ) -> None:
@@ -312,10 +300,6 @@ class WatchService:
         watch.next_check_at = moment
         await WatchRepository(session).flush()
         return moment
-
-    async def reset_seen_slots(self, session: AsyncSession, watch: BookingWatch) -> int:
-        """Forget the observed slots so the next run notifies everything again."""
-        return await SeenSlotRepository(session).clear_for_watch(watch.id)
 
     async def complete(self, session: AsyncSession, watch: BookingWatch, *, reason: str) -> None:
         if watch.completion_policy is WatchCompletionPolicy.CONTINUE_AFTER_SUCCESS:
