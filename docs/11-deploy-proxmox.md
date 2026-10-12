@@ -367,7 +367,7 @@ Aggiungi il container ai backup di Proxmox (*Datacenter → Backup*): uno
 snapshot notturno dà un ripristino completo in pochi minuti. La passphrase dei
 backup e le chiavi applicative non devono stare nello stesso archivio dei dati.
 
-La procedura di restore è in [`11-runbook.md`](11-runbook.md#restore).
+La procedura di restore è in [`10-runbook.md`](10-runbook.md#restore).
 
 ## 9. Aggiornare
 

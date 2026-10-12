@@ -143,8 +143,3 @@ Prenotazione/disdetta live sono escluse dalla suite automatica. Se validate manu
 | AC-023 | Repo e immagini non contengono HAR, `.env`, segreti o dati reali. |
 | AC-024 | Tutti i servizi Docker diventano healthy da database vuoto. |
 | AC-025 | Nessun bottone visibile è privo di handler o produce placeholder. |
-
-## Evidenza finale
-
-`docs/IMPLEMENTATION_STATUS.md` deve elencare per ogni AC file implementativi, test e ultimo esito. Un criterio senza evidenza è incompleto.
-

@@ -271,8 +271,7 @@ cancella un appuntamento vero. La prova manuale controllata è:
 5. scaricare il promemoria PDF;
 6. eseguire la disdetta dal bot con doppia conferma e verificare che
    l'appuntamento sparisca sia dal bot sia dal portale;
-7. annotare data, esito e correlation ID in
-   [`IMPLEMENTATION_STATUS.md`](IMPLEMENTATION_STATUS.md).
+7. annotare data, esito e correlation ID.
 
 Se un esito resta incerto il bot registra `AMBIGUOUS` e **non ritenta**:
 riconciliare manualmente prima di ripetere l'operazione.

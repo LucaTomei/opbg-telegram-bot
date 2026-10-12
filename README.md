@@ -25,6 +25,7 @@ ingresso, nessun dominio da configurare.
 - [Test](#test)
 - [Operazioni](#operazioni)
 - [Sicurezza](#sicurezza)
+- [Limiti noti](#limiti-noti)
 - [Documentazione](#documentazione)
 - [Licenza](#licenza)
 
@@ -184,9 +185,9 @@ opt-in, in sola lettura, e disabilitati per impostazione predefinita.
 ## Operazioni
 
 Il deploy su un container LXC di Proxmox è descritto passo per passo in
-[`docs/12-deploy-proxmox.md`](docs/12-deploy-proxmox.md).
+[`docs/11-deploy-proxmox.md`](docs/11-deploy-proxmox.md).
 
-Il runbook completo è in [`docs/11-runbook.md`](docs/11-runbook.md): aggiunta e
+Il runbook completo è in [`docs/10-runbook.md`](docs/10-runbook.md): aggiunta e
 rimozione di amministratori, generazione inviti, ri-autenticazione, pausa
 globale dei monitoraggi, circuit breaker, diagnosi di un cambio del portale,
 rotazione di token e chiavi, cancellazione dati, backup e restore, lettura dei
@@ -231,26 +232,42 @@ lo dice esplicitamente prima del collegamento del primo account.
 Non committare mai `.env`, file HAR, PDF, catture o dati reali: sono bloccati
 da [`.gitignore`](.gitignore) e verificati da `scripts/secret_scan.sh`.
 
+## Limiti noti
+
+- **Prenotazione e disdetta reali non coperte da test automatici**: la logica
+  è testata contro un portale sintetico con le stesse route, campi form e
+  payload, inclusi esito ambiguo, slot perso e sessione scaduta. La prova
+  manuale controllata è in
+  [`docs/10-runbook.md`](docs/10-runbook.md#verifica-manuale-della-prenotazione-live).
+- **Chiave di blind index non ruotabile a caldo**: cambiarla invalida gli
+  indici di ricerca sui campi cifrati e richiede di ricostruirli. La chiave di
+  cifratura, invece, ruota online con `APP_PREVIOUS_ENCRYPTION_KEYS`.
+- **Password inserita in chat**: scelta di prodotto esplicita. Il rischio
+  residuo è mitigato cancellando subito il messaggio, non scrivendo mai la
+  password nello stato conversazione, verificando il login prima di salvare e
+  avvisando l'utente se la cancellazione fallisce.
+- **Nessuna lettura condivisa fra monitor simili**: ogni monitor legge la
+  propria disponibilità; il carico verso il portale resta limitato dal rate
+  limiter globale, dal limite per account e dal circuit breaker.
+
 ## Documentazione
 
-1. [`docs/00-decisions.md`](docs/00-decisions.md) — decisioni di prodotto
-2. [`docs/01-product-requirements.md`](docs/01-product-requirements.md)
-3. [`docs/02-telegram-ux.md`](docs/02-telegram-ux.md)
-4. [`docs/03-portal-integration.md`](docs/03-portal-integration.md)
-5. [`docs/04-data-model.md`](docs/04-data-model.md)
-6. [`docs/05-architecture.md`](docs/05-architecture.md)
-7. [`docs/06-monitoring-and-autobook.md`](docs/06-monitoring-and-autobook.md)
-8. [`docs/07-admin-security-privacy.md`](docs/07-admin-security-privacy.md)
-9. [`docs/08-docker-operations.md`](docs/08-docker-operations.md)
-10. [`docs/09-testing-acceptance.md`](docs/09-testing-acceptance.md)
-11. [`docs/10-definition-of-done.md`](docs/10-definition-of-done.md)
-12. [`docs/11-runbook.md`](docs/11-runbook.md)
-13. [`docs/12-deploy-proxmox.md`](docs/12-deploy-proxmox.md) — deploy su un
+1. [`docs/01-product-requirements.md`](docs/01-product-requirements.md)
+2. [`docs/02-telegram-ux.md`](docs/02-telegram-ux.md)
+3. [`docs/03-portal-integration.md`](docs/03-portal-integration.md)
+4. [`docs/04-data-model.md`](docs/04-data-model.md)
+5. [`docs/05-architecture.md`](docs/05-architecture.md)
+6. [`docs/06-monitoring-and-autobook.md`](docs/06-monitoring-and-autobook.md)
+7. [`docs/07-admin-security-privacy.md`](docs/07-admin-security-privacy.md)
+8. [`docs/08-docker-operations.md`](docs/08-docker-operations.md)
+9. [`docs/09-testing-acceptance.md`](docs/09-testing-acceptance.md)
+10. [`docs/10-runbook.md`](docs/10-runbook.md)
+11. [`docs/11-deploy-proxmox.md`](docs/11-deploy-proxmox.md) — deploy su un
     container LXC di Proxmox
-14. [`docs/IMPLEMENTATION_STATUS.md`](docs/IMPLEMENTATION_STATUS.md) — stato,
-    verifiche eseguite e matrice di tracciabilità
 
 ## Licenza
 
-Software proprietario, tutti i diritti riservati. Vedi [`LICENSE`](LICENSE).
+Distribuito con licenza [MIT](LICENSE). Progetto non affiliato all'Ospedale
+Pediatrico Bambino Gesù.
+
 Le modifiche sono elencate in [`CHANGELOG.md`](CHANGELOG.md).

@@ -7,7 +7,7 @@ name = "opbg-telegram-bot"
 version = "1.0.0"
 description = "Private invite-only Telegram assistant for OPBG LAPI appointments"
 requires-python = ">=3.13,<3.14"
-license = { text = "Proprietary" }
+license = { text = "MIT" }
 authors = [{ name = "Luca Tomei" }]
 dependencies = [
     "aiogram==3.30.0",
