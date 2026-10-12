@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from datetime import date, timedelta
 from typing import Any
 
 import httpx
@@ -29,11 +30,46 @@ from app.services.portal_sessions import PortalSessionManager
 from app.services.search import SearchService
 from app.services.users import InviteService, UserService
 from app.services.watches import WatchService
-from tests.fixtures.synthetic import load
+from tests.fixtures.synthetic import load as load_fixture
 
 PDF_BYTES = b"%PDF-1.7\n promemoria sintetico \n%%EOF"
 VALID_EMAIL = "utente.sintetico@example.invalid"
 VALID_PASSWORD = "password-sintetica-di-test"
+
+
+#: The fixtures were written around this day. The fake serves them moved by
+#: whole weeks so that the earliest proposal always lies a week or two ahead:
+#: weekdays stay the same and the slots never drift into the past, where the
+#: filters would rightly discard them.
+FIXTURE_ANCHOR = date(2026, 9, 15)
+#: Daylight saving fixtures are tied to the actual transition dates.
+UNSHIFTED_FIXTURES = frozenset({"availability_dst.json"})
+_ISO_DATE = re.compile(r"\b(\d{4})-(\d{2})-(\d{2})\b")
+_ITALIAN_DATE = re.compile(r"\b(\d{2})/(\d{2})/(\d{4})\b")
+
+
+def fixture_shift(today: date | None = None) -> timedelta:
+    """Whole weeks that move the fixture anchor at least seven days ahead."""
+    lead = (today or date.today()) + timedelta(days=7) - FIXTURE_ANCHOR
+    return timedelta(weeks=max(0, -(-lead.days // 7)))
+
+
+def load(name: str) -> str:
+    """Read a fixture with its dates moved relative to today."""
+    text = load_fixture(name)
+    if name in UNSHIFTED_FIXTURES:
+        return text
+    shift = fixture_shift()
+
+    def iso(match: re.Match[str]) -> str:
+        moved = date(*map(int, match.groups())) + shift
+        return moved.isoformat()
+
+    def italian(match: re.Match[str]) -> str:
+        day, month, year = map(int, match.groups())
+        return (date(year, month, day) + shift).strftime("%d/%m/%Y")
+
+    return _ITALIAN_DATE.sub(italian, _ISO_DATE.sub(iso, text))
 
 
 def _html(body: str, status: int = 200) -> httpx.Response:
