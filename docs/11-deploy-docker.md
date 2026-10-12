@@ -3,7 +3,7 @@
 Guida per mettere online una propria istanza del bot su un qualsiasi server
 Linux con Docker: una VPS (Hetzner, DigitalOcean, OVH, Scaleway…), un server di
 casa, un mini PC. Per un container LXC di Proxmox c'è la guida
-dedicata [`11-deploy-proxmox.md`](11-deploy-proxmox.md).
+dedicata [`10-deploy-proxmox.md`](10-deploy-proxmox.md).
 
 Il bot usa il **long polling**: è lui a chiedere a Telegram i nuovi messaggi.
 Quindi non servono un dominio, un certificato HTTPS, un reverse proxy né porte
@@ -232,7 +232,7 @@ OPBG_TAG=sha-<commit>
 
 e poi `docker compose up -d`. Le migrazioni non si annullano da sole: tornare a
 un'immagine più vecchia di uno schema già migrato va pianificato, vedi il
-[runbook](10-runbook.md).
+[runbook](09-runbook.md).
 
 Se hai scaricato `compose.yaml` con `curl`, ogni tanto riscaricalo dal
 repository: le nuove versioni possono aggiungere servizi o variabili. Le
@@ -265,7 +265,7 @@ rsync -a "$HOME/opbg-backups/" utente@altro-host:/backup/opbg/
 
 Gli archivi sono cifrati, ma non contengono le chiavi applicative: per un
 ripristino servono archivio, passphrase **e** il `.env` originale. La procedura
-di restore è nel [runbook](10-runbook.md#restore).
+di restore è nel [runbook](09-runbook.md#restore).
 
 ## 11. Mettere in sicurezza il server
 
@@ -345,7 +345,7 @@ echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 
 **`all predefined address pools have been fully subnetted`.** Il server ha
 troppe reti Docker: la soluzione è nella
-[guida Proxmox](11-deploy-proxmox.md#su-un-pct-docker-già-esistente).
+[guida Proxmox](10-deploy-proxmox.md#su-un-pct-docker-già-esistente).
 
 **Il worker non prende lavoro, i monitoraggi non partono.** Controlla
 l'heartbeat con `docker compose exec bot python -m app.cli healthcheck` e i log
@@ -353,4 +353,4 @@ del worker, poi da Telegram **Amministrazione → Stato sistema**.
 
 Tutte le altre procedure operative (rotazione delle chiavi, pausa globale dei
 monitoraggi, circuit breaker, cancellazione dati) sono nel
-[runbook](10-runbook.md).
+[runbook](09-runbook.md).

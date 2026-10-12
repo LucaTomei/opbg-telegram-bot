@@ -21,6 +21,14 @@ versionamento è [semantico](https://semver.org/lang/it/).
 ### Corretto
 
 - I test di integrazione non dipendono più dalla data in cui vengono eseguiti.
+- L'informativa diceva che le credenziali si inseriscono in una pagina HTTPS:
+  si scrivono in chat e il messaggio con la password viene cancellato subito.
+
+### Rimosso
+
+- Codice mai usato: funzioni, costanti e testi rimasti dalla vecchia pagina
+  web di collegamento e da refactoring precedenti.
+- Documento sui requisiti Docker, superato dalle guide di deploy e dal runbook.
 
 ## [1.0.0] — 2026-08-24
 

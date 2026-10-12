@@ -160,7 +160,7 @@ make build                # docker compose -f compose.yaml -f compose.dev.yaml b
 
 > [!TIP]
 > La guida completa, con requisiti, backup, aggiornamenti e messa in sicurezza
-> del server, è in [`docs/12-deploy-docker.md`](docs/12-deploy-docker.md).
+> del server, è in [`docs/11-deploy-docker.md`](docs/11-deploy-docker.md).
 
 Poi, da Telegram:
 
@@ -234,10 +234,10 @@ opt-in, in sola lettura, e disabilitati per impostazione predefinita.
 
 | Scenario | Guida |
 | --- | --- |
-| Qualsiasi server Linux con Docker (VPS, server di casa) | [`docs/12-deploy-docker.md`](docs/12-deploy-docker.md) |
-| Container LXC su Proxmox | [`docs/11-deploy-proxmox.md`](docs/11-deploy-proxmox.md) |
+| Qualsiasi server Linux con Docker (VPS, server di casa) | [`docs/11-deploy-docker.md`](docs/11-deploy-docker.md) |
+| Container LXC su Proxmox | [`docs/10-deploy-proxmox.md`](docs/10-deploy-proxmox.md) |
 
-Il runbook completo è in [`docs/10-runbook.md`](docs/10-runbook.md): aggiunta e
+Il runbook completo è in [`docs/09-runbook.md`](docs/09-runbook.md): aggiunta e
 rimozione di amministratori, generazione inviti, ri-autenticazione, pausa
 globale dei monitoraggi, circuit breaker, diagnosi di un cambio del portale,
 rotazione di token e chiavi, cancellazione dati, backup e restore, lettura dei
@@ -255,7 +255,7 @@ docker compose ps                                 # 4. health
 L'immagine `latest` si aggiorna da sola a ogni push su `main` e ogni settimana
 con le patch dell'immagine base; le versioni (`v1.2.3`) pubblicano anche
 `1.2.3` e `1.2`. Sul server un cron può fare backup, pull e riavvio in
-automatico: lo script è nella [guida Docker](docs/12-deploy-docker.md#in-automatico).
+automatico: lo script è nella [guida Docker](docs/11-deploy-docker.md#in-automatico).
 
 Rollback applicativo: fissare `OPBG_TAG=sha-<commit>` nel file di ambiente e
 riavviare, perché ogni build pubblicata è taggata anche con il proprio commit.
@@ -297,7 +297,7 @@ da [`.gitignore`](.gitignore) e verificati da `scripts/secret_scan.sh`.
   è testata contro un portale sintetico con le stesse route, campi form e
   payload, inclusi esito ambiguo, slot perso e sessione scaduta. La prova
   manuale controllata è in
-  [`docs/10-runbook.md`](docs/10-runbook.md#verifica-manuale-della-prenotazione-live).
+  [`docs/09-runbook.md`](docs/09-runbook.md#verifica-manuale-della-prenotazione-live).
 - **Chiave di blind index non ruotabile a caldo**: cambiarla invalida gli
   indici di ricerca sui campi cifrati e richiede di ricostruirli. La chiave di
   cifratura, invece, ruota online con `APP_PREVIOUS_ENCRYPTION_KEYS`.
@@ -311,20 +311,19 @@ da [`.gitignore`](.gitignore) e verificati da `scripts/secret_scan.sh`.
 
 ## 📚 Documentazione
 
-1. [`docs/01-product-requirements.md`](docs/01-product-requirements.md)
-2. [`docs/02-telegram-ux.md`](docs/02-telegram-ux.md)
-3. [`docs/03-portal-integration.md`](docs/03-portal-integration.md)
-4. [`docs/04-data-model.md`](docs/04-data-model.md)
-5. [`docs/05-architecture.md`](docs/05-architecture.md)
-6. [`docs/06-monitoring-and-autobook.md`](docs/06-monitoring-and-autobook.md)
-7. [`docs/07-admin-security-privacy.md`](docs/07-admin-security-privacy.md)
-8. [`docs/08-docker-operations.md`](docs/08-docker-operations.md)
-9. [`docs/09-testing-acceptance.md`](docs/09-testing-acceptance.md)
-10. [`docs/10-runbook.md`](docs/10-runbook.md)
-11. [`docs/11-deploy-proxmox.md`](docs/11-deploy-proxmox.md) — deploy su un
-    container LXC di Proxmox
-12. [`docs/12-deploy-docker.md`](docs/12-deploy-docker.md) — pubblicare il bot
-    su un qualsiasi server con Docker
+| Documento | Contenuto |
+| --- | --- |
+| [Requisiti di prodotto](docs/01-product-requirements.md) | attori, funzioni, filtri, fuori ambito |
+| [UX Telegram](docs/02-telegram-ux.md) | tastiere, schermate, flussi |
+| [Integrazione col portale](docs/03-portal-integration.md) | endpoint, form, payload, errori |
+| [Modello dati](docs/04-data-model.md) | tabelle MySQL, cifratura, indici |
+| [Architettura](docs/05-architecture.md) | livelli, concorrenza, sessioni, osservabilità |
+| [Monitoraggio e auto-prenotazione](docs/06-monitoring-and-autobook.md) | ciclo del worker, filtri, notifiche |
+| [Amministrazione, sicurezza e privacy](docs/07-admin-security-privacy.md) | ruoli, audit, redazione, retention |
+| [Test](docs/08-testing-acceptance.md) | strategia e criteri di accettazione |
+| [Runbook](docs/09-runbook.md) | operazioni quotidiane, chiavi, backup e restore |
+| [Deploy su Proxmox](docs/10-deploy-proxmox.md) | container LXC passo per passo |
+| [Deploy con Docker](docs/11-deploy-docker.md) | qualsiasi server Linux, aggiornamenti automatici |
 
 ## 📄 Licenza
 
