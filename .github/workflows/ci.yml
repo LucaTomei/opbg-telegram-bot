@@ -6,8 +6,8 @@ on:
   pull_request:
   workflow_dispatch:
 
-# A new push on the same ref cancels the run still in flight: there is a single
-# self-hosted runner and a superseded run is wasted time on it.
+# A new push on the same ref cancels the run still in flight: a superseded run
+# is wasted time.
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -15,12 +15,10 @@ concurrency:
 jobs:
   guardrails:
     name: Guardrail e analisi del diff
-    # Self-hosted runner on the Proxmox node. It takes one job at a time, so the
-    # scans and the diff classification share a single checkout instead of
-    # paying for two. The workspace survives between runs, hence the clean
-    # checkout, and every job carries a timeout: a hung step must never pin the
-    # only runner.
-    runs-on: [self-hosted, linux, x64, docker]
+    # The scans and the diff classification share a single checkout instead of
+    # paying for two. Every job carries a timeout: a hung step must never burn
+    # a runner for hours.
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
       code: ${{ steps.filter.outputs.code }}
@@ -29,7 +27,6 @@ jobs:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
-          clean: true
 
       # Always run: a secret can be committed in any file, documentation
       # included, and the scans take seconds.
@@ -87,26 +84,16 @@ jobs:
     name: Formato, lint, tipi e test
     needs: guardrails
     if: needs.guardrails.outputs.code == 'true'
-    runs-on: [self-hosted, linux, x64, docker]
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     # The job runs inside the official image instead of installing Python on the
-    # runner: the interpreter is then the same one the application is built on,
-    # whatever the runner's own distribution is, and nothing is left behind on
-    # the host.
+    # runner: the interpreter is then the same one the application is built on.
     container:
       image: python:3.13
     env:
       # Inside a job container the service is reached by its name, not through a
       # port published on the host.
       TEST_DATABASE_URL: mysql+aiomysql://root:ci-root-password@mysql:3306/opbg_bot_test
-      # The container runs as root while the runner that cleans the workspace
-      # afterwards does not, so nothing the tools write may land in the
-      # workspace: caches and bytecode go elsewhere.
-      PYTHONDONTWRITEBYTECODE: "1"
-      MYPY_CACHE_DIR: /tmp/mypy-cache
-      RUFF_CACHE_DIR: /tmp/ruff-cache
-      COVERAGE_FILE: /tmp/coverage-data
-      PYTEST_ADDOPTS: -p no:cacheprovider
     services:
       mysql:
         image: mysql:8.4
@@ -123,8 +110,6 @@ jobs:
           --health-start-period=10s
     steps:
       - uses: actions/checkout@v5
-        with:
-          clean: true
       - uses: actions/cache@v4
         with:
           path: /root/.cache/pip
@@ -144,13 +129,6 @@ jobs:
       - name: Test suite
         run: pytest --cov=app --cov-report=term-missing --cov-fail-under=70
 
-      - name: Hand the workspace back to the runner
-        # Whatever ran as root here would otherwise be undeletable by the next
-        # job: they share one directory on this runner. The parent directory
-        # belongs to the runner account, so it is the reference to restore.
-        if: always()
-        run: chown -R --reference=.. . || true
-
   image:
     name: Immagine Docker
     needs: [guardrails, quality]
@@ -166,7 +144,7 @@ jobs:
       && needs.quality.result != 'cancelled'
       && (needs.guardrails.outputs.image == 'true'
           || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
-    runs-on: [self-hosted, linux, x64, docker]
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
       contents: read
@@ -177,13 +155,7 @@ jobs:
       REGISTRY_IMAGE: ghcr.io/lucatomei/opbg-telegram-bot
     steps:
       - uses: actions/checkout@v5
-        with:
-          clean: true
       - name: Build
-        # Plain docker build, not buildx: the runner is self-hosted, so the
-        # daemon's own layer cache survives between runs, while a fresh buildx
-        # builder would start cold every time.
-        #
         # Retried because the base image comes from Docker Hub, which regularly
         # answers 500 while issuing the anonymous pull token. That is not a
         # fault of this repository and must not fail the run.
@@ -221,16 +193,5 @@ jobs:
           for tag in latest "$SHA_TAG"; do
             docker tag opbg-telegram-bot:ci "${REGISTRY_IMAGE}:${tag}"
             docker push "${REGISTRY_IMAGE}:${tag}"
-            docker image rm -f "${REGISTRY_IMAGE}:${tag}" || true
           done
           echo "published ${REGISTRY_IMAGE}:latest and :${SHA_TAG}"
-
-      - name: Reclaim disk space
-        # The runner keeps everything it builds, so the image produced here goes
-        # away at the end of every run. The build cache is trimmed, not wiped:
-        # the next run reuses it.
-        if: always()
-        run: |
-          docker logout ghcr.io || true
-          docker image rm -f opbg-telegram-bot:ci || true
-          docker builder prune --force --keep-storage 4GB || true
