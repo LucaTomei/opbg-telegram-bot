@@ -57,18 +57,16 @@ grafica come Arcane, Portainer o Dockge.
 
 ### Credenziali del registry
 
-Il pacchetto eredita la visibilità del repository, quindi è privato. L'host
-deve autenticarsi una volta sola, con un token GitHub che abbia il solo
-permesso `read:packages`:
+Se il pacchetto è pubblico non serve nessun login. Se è privato, per esempio
+quello pubblicato da un fork, l'host deve autenticarsi una volta sola con un
+token GitHub che abbia il solo permesso `read:packages`:
 
 ```bash
-echo '<token>' | docker login ghcr.io -u LucaTomei --password-stdin
+echo '<token>' | docker login ghcr.io -u <utente-github> --password-stdin
 ```
 
 Le credenziali finiscono in `~/.docker/config.json` e non scadono finché il
-token è valido. In alternativa il pacchetto può essere reso pubblico dalla
-pagina del package su GitHub, e allora nessun login serve: l'immagine però
-contiene tutto il codice applicativo.
+token è valido.
 
 ### Lo stack
 
@@ -231,28 +229,12 @@ molto disco: vedi [Diagnosi](#diagnosi).
 > consigliato salta a [Deploy senza repository](#deploy-senza-repository): non
 > serve nessun clone.
 
-Il repository è privato, quindi serve una deploy key di sola lettura, generata
-**dentro** il container:
+Il repository è pubblico: basta clonarlo nella cartella degli stack.
 
 ```bash
-ssh-keygen -t ed25519 -C "opbg-bot@ms01" -f ~/.ssh/id_ed25519 -N ""
-cat ~/.ssh/id_ed25519.pub
-```
-
-Registra la chiave pubblica su GitHub in *Settings → Deploy keys* del
-repository, senza permesso di scrittura, poi clona nella cartella degli stack:
-
-```bash
-git clone git@github.com:LucaTomei/opbg-telegram-bot.git \
+git clone https://github.com/LucaTomei/opbg-telegram-bot.git \
   /opt/docker/stacks/opbg-telegram-bot
 cd /opt/docker/stacks/opbg-telegram-bot
-```
-
-In alternativa, senza deploy key, copia il progetto dal tuo Mac:
-
-```bash
-rsync -av --exclude .git --exclude .venv --exclude .env \
-  ./ root@<ip-del-container>:/home/opbg/opbg-telegram-bot/
 ```
 
 ## 5. Generare i segreti

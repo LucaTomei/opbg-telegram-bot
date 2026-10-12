@@ -1,0 +1,22 @@
+name: Proponi una funzione
+description: Un'idea per migliorare il bot.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Il problema
+      description: Che cosa non riesci a fare oggi, o cosa è scomodo.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: La proposta
+      description: Come dovrebbe funzionare, idealmente dal punto di vista di chi usa il bot.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternative considerate

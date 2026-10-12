@@ -1,0 +1,50 @@
+name: Segnala un problema
+description: Qualcosa non funziona come dovrebbe.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Non incollare mai** token, password, chiavi, codici fiscali, nomi di
+        pazienti o PDF. I log del bot sono già redatti, ma ricontrolla prima di
+        incollarli.
+  - type: textarea
+    id: what
+    attributes:
+      label: Cosa succede
+      description: Cosa hai fatto, cosa ti aspettavi e cosa è successo invece.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Come riprodurlo
+      placeholder: |
+        1. Menu → Monitoraggi → Nuovo
+        2. ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Versione
+      description: Tag dell'immagine (`OPBG_TAG`) o commit.
+      placeholder: latest, sha-1234abc
+    validations:
+      required: true
+  - type: dropdown
+    id: deploy
+    attributes:
+      label: Installazione
+      options:
+        - Immagine pubblicata (docker compose pull)
+        - Immagine costruita dal sorgente
+        - Sviluppo locale
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log rilevanti
+      description: "`docker compose logs --tail=200 bot worker`, solo le righe utili."
+      render: text

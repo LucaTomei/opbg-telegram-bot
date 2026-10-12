@@ -1,6 +1,26 @@
-# OPBG Telegram Booking Bot
+<div align="center">
+
+# 🏥 OPBG Telegram Booking Bot
+
+**Prenotazioni, monitoraggio delle disponibilità e appuntamenti del portale
+dell'Ospedale Pediatrico Bambino Gesù, direttamente da Telegram.**
 
 [![CI](https://github.com/LucaTomei/opbg-telegram-bot/actions/workflows/ci.yml/badge.svg)](https://github.com/LucaTomei/opbg-telegram-bot/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Python 3.13](https://img.shields.io/badge/python-3.13-3776AB?logo=python&logoColor=white)](pyproject.toml)
+[![aiogram 3](https://img.shields.io/badge/aiogram-3-26A5E4?logo=telegram&logoColor=white)](https://docs.aiogram.dev/)
+[![MySQL 8.4](https://img.shields.io/badge/MySQL-8.4_LTS-4479A1?logo=mysql&logoColor=white)](compose.yaml)
+[![Docker image](https://img.shields.io/badge/ghcr.io-opbg--telegram--bot-2496ED?logo=docker&logoColor=white)](https://github.com/LucaTomei/opbg-telegram-bot/pkgs/container/opbg-telegram-bot)
+
+[Cosa fa](#-cosa-fa) ·
+[Pubblicarlo](#-avvio-rapido) ·
+[Architettura](#-architettura) ·
+[Sicurezza](#-sicurezza) ·
+[Documentazione](#-documentazione)
+
+</div>
+
+---
 
 Bot Telegram privato e multiutente che automatizza il percorso **LAPI** del
 portale di prenotazione dell'Ospedale Pediatrico Bambino Gesù: ricerca di
@@ -8,28 +28,40 @@ prestazioni e medici, monitoraggio delle disponibilità, prenotazione con doppia
 conferma, gestione degli appuntamenti e amministrazione completa.
 
 Tutto avviene dentro Telegram. Nessuna interfaccia web, nessuna porta in
-ingresso, nessun dominio da configurare.
+ingresso, nessun dominio da configurare: basta un server con Docker.
 
-> Servizio **privato e non ufficiale**, non gestito dall'ospedale. Ogni account
-> collegato deve appartenere a una persona autorizzata. Il bot non aggira
-> CAPTCHA, MFA, rate limiting o blocchi del portale.
+> [!IMPORTANT]
+> Progetto **non ufficiale**, non affiliato né gestito dall'ospedale. Ogni
+> account collegato deve appartenere a una persona autorizzata. Il bot non
+> aggira CAPTCHA, MFA, rate limiting o blocchi del portale.
 
-## Indice
+## ✨ In breve
 
-- [Cosa fa](#cosa-fa)
-- [Architettura](#architettura)
-- [Requisiti](#requisiti)
-- [Avvio rapido](#avvio-rapido)
-- [Configurazione](#configurazione)
-- [Sviluppo](#sviluppo)
-- [Test](#test)
-- [Operazioni](#operazioni)
-- [Sicurezza](#sicurezza)
-- [Limiti noti](#limiti-noti)
-- [Documentazione](#documentazione)
-- [Licenza](#licenza)
+- 🔎 **Ricerca** per prestazione o per medico, su una, più o tutte le sedi
+- 🔔 **Monitoraggi** con notifica, auto-prenotazione o entrambe, filtri su
+  date, giorni e fasce orarie
+- ✅ **Prenotazione** con doppia conferma e verifica sull'elenco appuntamenti
+- 📅 **Appuntamenti**: elenco, promemoria PDF, disdetta verificata
+- 👥 **Multiutente** su invito, più account del portale per utente
+- 🛡️ **Amministrazione** completa in chat, dati sensibili cifrati e audit
+- 🐳 **Un comando** per partire: `docker compose up -d`
 
-## Cosa fa
+## 📑 Indice
+
+- [Cosa fa](#-cosa-fa)
+- [Architettura](#-architettura)
+- [Requisiti](#-requisiti)
+- [Avvio rapido](#-avvio-rapido)
+- [Configurazione](#-configurazione)
+- [Sviluppo](#-sviluppo)
+- [Test](#-test)
+- [Operazioni](#-operazioni)
+- [Sicurezza](#-sicurezza)
+- [Limiti noti](#-limiti-noti)
+- [Documentazione](#-documentazione)
+- [Licenza](#-licenza)
+
+## 🧭 Cosa fa
 
 | Area | Funzioni |
 | --- | --- |
@@ -48,7 +80,7 @@ ingresso, nessun dominio da configurare.
 Fuori ambito: SSN e ricetta elettronica, pagamenti, registrazione libera,
 aggiramento delle protezioni del portale, diagnosi medica.
 
-## Architettura
+## 🧱 Architettura
 
 Una sola immagine applicativa, due processi più il database:
 
@@ -86,7 +118,7 @@ Struttura del codice in [`app/`](app/): `config.py`, `logging.py`,
 [`portal/`](app/portal/), [`services/`](app/services/), [`bot/`](app/bot/),
 [`worker/`](app/worker/).
 
-## Requisiti
+## 📋 Requisiti
 
 - Docker 24+ e Docker Compose v2
 - Python 3.13 (solo per sviluppo e test locali)
@@ -95,24 +127,40 @@ Struttura del codice in [`app/`](app/): `config.py`, `logging.py`,
 
 Non serve un dominio, né un certificato, né aprire porte sul router.
 
-## Avvio rapido
+## 🚀 Avvio rapido
+
+Su un server Linux con Docker bastano due file, senza clonare il repository:
 
 ```bash
-cp .env.example .env
-make keys                 # genera i segreti e incollali in .env
+mkdir opbg-telegram-bot && cd opbg-telegram-bot
+BASE=https://raw.githubusercontent.com/LucaTomei/opbg-telegram-bot/main
+curl -fsSLO "$BASE/compose.yaml"
+curl -fsSL  "$BASE/.env.example" -o .env && chmod 600 .env
+
+# segreti generati, mai inventati
+for name in APP_SECRET_KEY APP_ENCRYPTION_KEY APP_BLIND_INDEX_KEY \
+            MYSQL_PASSWORD MYSQL_ROOT_PASSWORD BACKUP_PASSPHRASE; do
+  value="$(openssl rand -base64 32 | tr '+/' '-_' | tr -d '=')"
+  sed -i "s|^${name}=.*|${name}=${value}|" .env
+done
+
+nano .env                 # TELEGRAM_BOT_TOKEN, TELEGRAM_BOT_USERNAME, TELEGRAM_ADMIN_IDS
 docker compose pull       # scarica l'immagine pubblicata su GHCR
 docker compose up -d      # applica le migrazioni, poi avvia bot e worker
 docker compose ps
-docker compose logs --tail=200 bot worker
 ```
 
 `compose.yaml` non costruisce niente: punta all'immagine che la pipeline
 pubblica su GitHub Container Registry a ogni push su `main` che superi i test.
-Per costruirla dal sorgente serve il file di sviluppo:
+Per costruirla dal sorgente, da un clone del repository:
 
 ```bash
 make build                # docker compose -f compose.yaml -f compose.dev.yaml build
 ```
+
+> [!TIP]
+> La guida completa, con requisiti, backup, aggiornamenti e messa in sicurezza
+> del server, è in [`docs/12-deploy-docker.md`](docs/12-deploy-docker.md).
 
 Poi, da Telegram:
 
@@ -122,7 +170,7 @@ Poi, da Telegram:
 4. l'utente invia `/start CODICE-INVITO`, accetta l'informativa e collega il
    primo account da **Account → Collega account**.
 
-## Configurazione
+## 🔧 Configurazione
 
 Tutte le variabili sono documentate in [`.env.example`](.env.example). Le più
 importanti:
@@ -143,7 +191,7 @@ importanti:
 L'avvio fallisce se una chiave manca, è debole o contiene ancora un
 segnaposto d'esempio.
 
-## Sviluppo
+## 💻 Sviluppo
 
 ```bash
 make venv install         # ambiente virtuale e dipendenze
@@ -164,7 +212,7 @@ Le dipendenze dirette sono fissate in [`pyproject.toml`](pyproject.toml) e
 bloccate in [`requirements.lock`](requirements.lock) e
 [`requirements-dev.lock`](requirements-dev.lock); rigenerale con `make lock`.
 
-## Test
+## 🧪 Test
 
 | Suite | Comando | Dipendenze |
 | --- | --- | --- |
@@ -182,10 +230,12 @@ modelli e migrazioni fa fallire la suite.
 Nessun test automatico crea o disdice un appuntamento reale: i test live sono
 opt-in, in sola lettura, e disabilitati per impostazione predefinita.
 
-## Operazioni
+## 📦 Operazioni
 
-Il deploy su un container LXC di Proxmox è descritto passo per passo in
-[`docs/11-deploy-proxmox.md`](docs/11-deploy-proxmox.md).
+| Scenario | Guida |
+| --- | --- |
+| Qualsiasi server Linux con Docker (VPS, server di casa) | [`docs/12-deploy-docker.md`](docs/12-deploy-docker.md) |
+| Container LXC su Proxmox | [`docs/11-deploy-proxmox.md`](docs/11-deploy-proxmox.md) |
 
 Il runbook completo è in [`docs/10-runbook.md`](docs/10-runbook.md): aggiunta e
 rimozione di amministratori, generazione inviti, ri-autenticazione, pausa
@@ -203,10 +253,11 @@ docker compose ps                                 # 4. health
 ```
 
 Rollback applicativo: fissare `OPBG_TAG=sha-<commit>` nel file di ambiente e
-riavviare — ogni build pubblicata è taggata anche con il proprio commit. Non eseguire un downgrade distruttivo del database senza averlo
-pianificato; la procedura è descritta nel runbook.
+riavviare, perché ogni build pubblicata è taggata anche con il proprio commit.
+Non eseguire un downgrade distruttivo del database senza averlo pianificato; la
+procedura è descritta nel runbook.
 
-## Sicurezza
+## 🔐 Sicurezza
 
 - email, password, cookie, identificativi dei pazienti e payload sensibili
   delle conversazioni sono cifrati con AES-256-GCM, legati a tabella, record,
@@ -229,10 +280,13 @@ pianificato; la procedura è descritta nel runbook.
 Le chat Telegram non sono cifrate end-to-end: l'informativa mostrata all'utente
 lo dice esplicitamente prima del collegamento del primo account.
 
+Vulnerabilità: segnalale in privato come descritto in
+[`SECURITY.md`](SECURITY.md).
+
 Non committare mai `.env`, file HAR, PDF, catture o dati reali: sono bloccati
 da [`.gitignore`](.gitignore) e verificati da `scripts/secret_scan.sh`.
 
-## Limiti noti
+## 🚧 Limiti noti
 
 - **Prenotazione e disdetta reali non coperte da test automatici**: la logica
   è testata contro un portale sintetico con le stesse route, campi form e
@@ -250,7 +304,7 @@ da [`.gitignore`](.gitignore) e verificati da `scripts/secret_scan.sh`.
   propria disponibilità; il carico verso il portale resta limitato dal rate
   limiter globale, dal limite per account e dal circuit breaker.
 
-## Documentazione
+## 📚 Documentazione
 
 1. [`docs/01-product-requirements.md`](docs/01-product-requirements.md)
 2. [`docs/02-telegram-ux.md`](docs/02-telegram-ux.md)
@@ -264,8 +318,10 @@ da [`.gitignore`](.gitignore) e verificati da `scripts/secret_scan.sh`.
 10. [`docs/10-runbook.md`](docs/10-runbook.md)
 11. [`docs/11-deploy-proxmox.md`](docs/11-deploy-proxmox.md) — deploy su un
     container LXC di Proxmox
+12. [`docs/12-deploy-docker.md`](docs/12-deploy-docker.md) — pubblicare il bot
+    su un qualsiasi server con Docker
 
-## Licenza
+## 📄 Licenza
 
 Distribuito con licenza [MIT](LICENSE). Progetto non affiliato all'Ospedale
 Pediatrico Bambino Gesù.
