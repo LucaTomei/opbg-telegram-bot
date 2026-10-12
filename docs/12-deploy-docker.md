@@ -163,6 +163,20 @@ Il bot è privato: senza invito valido nessuno può usarlo.
 
 ## 9. Aggiornare e tornare indietro
 
+### Da dove arrivano le versioni
+
+L'immagine su GitHub Container Registry si aggiorna da sola:
+
+| Tag | Quando cambia | Uso |
+| --- | --- | --- |
+| `latest` | a ogni push su `main` che supera i test, e ogni lunedì con le patch di sicurezza dell'immagine base | predefinito |
+| `1.2.3`, `1.2` | quando viene pubblicata una versione (tag Git `v1.2.3`) | aggiornamenti più prudenti |
+| `sha-<commit>` | mai: punta sempre allo stesso commit | rollback esatto |
+
+Sul server basta quindi riscaricarla.
+
+### A mano
+
 ```bash
 cd /opt/opbg-telegram-bot
 docker compose --profile backup run --rm backup   # 1. backup
@@ -171,6 +185,43 @@ docker compose up -d                              # 3. migrazioni e restart
 docker compose ps                                 # 4. salute
 docker image prune -f                             # 5. spazio
 ```
+
+### In automatico
+
+Uno script fa backup, scarica l'immagine e riavvia solo se è cambiata.
+Crealo una volta:
+
+```bash
+cat > /opt/opbg-telegram-bot/update.sh <<'SH'
+#!/bin/sh
+set -eu
+cd /opt/opbg-telegram-bot
+image="$(docker compose config --images | grep opbg-telegram-bot | head -n1)"
+running="$(docker inspect -f '{{.Image}}' "$(docker compose ps -q bot)" 2>/dev/null || true)"
+docker compose pull --quiet
+if [ "$running" = "$(docker image inspect -f '{{.Id}}' "$image")" ]; then
+  echo "$(date -Is) nessuna novità"
+  exit 0
+fi
+docker compose --profile backup run --rm backup
+docker compose up -d --remove-orphans
+docker image prune -f
+echo "$(date -Is) aggiornato"
+SH
+chmod +x /opt/opbg-telegram-bot/update.sh
+```
+
+e pianificalo ogni notte con `crontab -e`:
+
+```cron
+15 4 * * * /opt/opbg-telegram-bot/update.sh >> /var/log/opbg-update.log 2>&1
+```
+
+Se preferisci aggiornamenti meno frequenti, nel `.env` fissa una serie di
+versioni, per esempio `OPBG_TAG=1.2`: lo script prenderà solo le correzioni di
+quella serie.
+
+### Tornare indietro
 
 Ogni immagine è pubblicata anche con il tag del proprio commit. Per fissare una
 versione esatta o tornare indietro, nel `.env`:

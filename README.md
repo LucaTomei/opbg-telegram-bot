@@ -252,6 +252,11 @@ docker compose up -d                              # 3. migrazioni e restart
 docker compose ps                                 # 4. health
 ```
 
+L'immagine `latest` si aggiorna da sola a ogni push su `main` e ogni settimana
+con le patch dell'immagine base; le versioni (`v1.2.3`) pubblicano anche
+`1.2.3` e `1.2`. Sul server un cron può fare backup, pull e riavvio in
+automatico: lo script è nella [guida Docker](docs/12-deploy-docker.md#in-automatico).
+
 Rollback applicativo: fissare `OPBG_TAG=sha-<commit>` nel file di ambiente e
 riavviare, perché ogni build pubblicata è taggata anche con il proprio commit.
 Non eseguire un downgrade distruttivo del database senza averlo pianificato; la

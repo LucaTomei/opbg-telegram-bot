@@ -50,7 +50,9 @@ di avviare `bot` e `worker`.
 ## Deploy senza repository
 
 La pipeline pubblica l'immagine su GitHub Container Registry a ogni push su
-`main` che superi i test, con due tag: `latest` e `sha-<commit>`. Un
+`main` che superi i test, con due tag: `latest` e `sha-<commit>`. `latest`
+viene ricostruita anche ogni settimana per le patch dell'immagine base, e un tag
+Git `v1.2.3` pubblica anche `1.2.3` e `1.2`. Un
 deployment la scarica e basta: niente sorgente sull'host, niente build, niente
 compilatore. È il modo consigliato, e l'unico praticabile da un'interfaccia
 grafica come Arcane, Portainer o Dockge.

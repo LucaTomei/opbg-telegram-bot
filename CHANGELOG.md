@@ -3,6 +3,25 @@
 Il formato segue [Keep a Changelog](https://keepachangelog.com/it/1.1.0/) e il
 versionamento è [semantico](https://semver.org/lang/it/).
 
+## [Non rilasciato]
+
+### Aggiunto
+
+- Guida per pubblicare il bot su un qualsiasi server con Docker, con
+  aggiornamento automatico dell'immagine via cron.
+- Immagine ricostruita ogni settimana per le patch di sicurezza dell'immagine
+  base; i tag `v1.2.3` pubblicano anche `1.2.3` e `1.2`.
+- Policy di sicurezza e modelli per issue e pull request.
+
+### Modificato
+
+- Licenza MIT al posto di quella proprietaria.
+- CI sui runner ospitati da GitHub.
+
+### Corretto
+
+- I test di integrazione non dipendono più dalla data in cui vengono eseguiti.
+
 ## [1.0.0] — 2026-08-24
 
 Prima versione completa.
@@ -36,4 +55,5 @@ Prima versione completa.
 - Distribuzione con Docker Compose: `mysql`, `bot`, `worker`, `migrate` e il
   profilo `backup`. Nessuna porta pubblicata.
 
+[Non rilasciato]: https://github.com/LucaTomei/opbg-telegram-bot/compare/v1.0.0...HEAD
 [1.0.0]: https://github.com/LucaTomei/opbg-telegram-bot/releases/tag/v1.0.0
